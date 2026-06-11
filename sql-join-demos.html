@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A Practical Guide to SQL Joins</title>
+<style>
+  :root{
+    --bg:#fdfdfb; --ink:#1f2328; --muted:#5c6670; --line:#e3e6ea;
+    --accent:#2d6cdf; --accent-soft:#eaf1fe;
+    --amz:#ff9900; --amz-soft:#fff6e8;
+    --good:#1a7f4b; --good-soft:#e7f6ee;
+    --warn:#b4690e; --warn-soft:#fdf3e3;
+    --bad:#c0392b; --bad-soft:#fdecea;
+    --code-bg:#1d2530; --code-ink:#e7edf5;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px; margin:0 auto; padding:32px 24px 96px}
+  header.page{border-bottom:3px solid var(--accent); padding-bottom:20px; margin-bottom:8px}
+  header.page h1{font-size:2.1rem; margin:0 0 6px; letter-spacing:-.02em}
+  header.page p.sub{color:var(--muted); margin:0; font-size:1.05rem}
+  nav.toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:24px 0 36px}
+  nav.toc h2{font-size:.8rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px}
+  nav.toc ol{margin:0; padding-left:20px}
+  nav.toc a{color:var(--accent); text-decoration:none}
+  nav.toc a:hover{text-decoration:underline}
+  h2.section{font-size:1.55rem; margin:48px 0 8px; padding-top:12px; letter-spacing:-.01em; border-top:1px solid var(--line)}
+  h3{font-size:1.18rem; margin:30px 0 6px}
+  h4{font-size:1rem; margin:20px 0 4px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; font-weight:600}
+  p{margin:10px 0}
+  code{background:#eef1f4; padding:1px 6px; border-radius:5px; font-family:"SF Mono",Menlo,Consolas,monospace; font-size:.88em}
+  pre{background:var(--code-bg); color:var(--code-ink); border-radius:10px; padding:16px 18px; overflow-x:auto; font-size:.86rem; line-height:1.55; margin:14px 0}
+  pre code{background:none; padding:0; color:inherit; font-size:inherit}
+  .kw{color:#7fb4ff; font-weight:600}
+  .cm{color:#8a98a8; font-style:italic}
+  .st{color:#9fe0a0}
+  table{border-collapse:collapse; width:100%; margin:16px 0; font-size:.92rem}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left}
+  th{background:#f3f5f8; font-weight:600}
+  td.num{text-align:right; font-variant-numeric:tabular-nums}
+  .callout{border-radius:10px; padding:14px 18px; margin:18px 0; border:1px solid var(--line); background:#fff}
+  .callout .tag{font-weight:700; font-size:.78rem; text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:4px}
+  .callout p:first-of-type{margin-top:0}
+  .callout p:last-child{margin-bottom:0}
+  .good{background:var(--good-soft); border-color:#bce5cf} .good .tag{color:var(--good)}
+  .warn{background:var(--warn-soft); border-color:#f1d9ad} .warn .tag{color:var(--warn)}
+  .bad{background:var(--bad-soft); border-color:#f3c4bd} .bad .tag{color:var(--bad)}
+  .tip{background:var(--accent-soft); border-color:#c5d8fb} .tip .tag{color:var(--accent)}
+  .amz-band{background:var(--amz-soft); border:1px solid #f1d9ad; border-left:5px solid var(--amz); border-radius:10px; padding:4px 24px 24px; margin-top:14px}
+  .amz-band h2.section{border-top:none; margin-top:24px}
+  .badge-amz{display:inline-block; background:var(--amz); color:#1f2328; font-weight:700; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; padding:3px 10px; border-radius:20px; margin-bottom:4px}
+  .venn{display:flex; gap:14px; flex-wrap:wrap; margin:18px 0}
+  .venn .card{flex:1 1 200px; border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:#fff}
+  .venn .card h4{margin-top:0; color:var(--ink); text-transform:none; letter-spacing:0; font-size:1rem}
+  .venn .card p{font-size:.9rem; color:var(--muted); margin:6px 0 0}
+  .key{font-size:.85rem; color:var(--muted)}
+  details{border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin:12px 0; background:#fff}
+  summary{cursor:pointer; font-weight:600}
+  footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:.85rem}
+  .pill{display:inline-block; padding:2px 9px; border-radius:20px; font-size:.78rem; font-weight:600}
+  .pill.l{background:var(--accent-soft); color:var(--accent)}
+  .pill.r{background:var(--warn-soft); color:var(--warn)}
+
+  /* ---- interactive demo ---- */
+  .demo{border:1px solid var(--line); border-radius:12px; padding:18px 20px 22px; background:#fff; margin:18px 0 8px}
+  .demo-tables{display:flex; gap:22px; flex-wrap:wrap; margin:6px 0 14px}
+  .demo-tables>div{flex:1 1 220px}
+  .demo h4{margin:0 0 6px; color:var(--ink); text-transform:none; letter-spacing:0; font-size:.95rem}
+  table.src{width:100%; font-size:.85rem; border-collapse:collapse}
+  table.src th,table.src td{border:1px solid var(--line); padding:6px 9px; text-align:left}
+  table.src th{background:#f3f5f8}
+  table.src tbody tr{transition:background .2s, box-shadow .2s}
+  table.src tbody tr.comparing{background:#fff6d6; box-shadow:inset 0 0 0 2px #f1c40f}
+  table.src tbody tr.matched{background:var(--good-soft); box-shadow:inset 0 0 0 2px #58c08a}
+  .demo-joins{display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px}
+  .demo button{font:600 .85rem/1 inherit; padding:8px 13px; border-radius:8px; cursor:pointer; border:1px solid var(--accent); background:var(--accent); color:#fff; transition:filter .15s}
+  .demo button:hover:not(:disabled){filter:brightness(1.08)}
+  .demo button.ghost{background:#fff; color:var(--muted); border-color:var(--line)}
+  .demo button:disabled{opacity:.4; cursor:default; filter:none}
+  .demo-playback{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:0 0 12px; padding:10px 12px; background:#f7f9fb; border:1px solid var(--line); border-radius:8px}
+  .slider-wrap{display:flex; align-items:center; gap:8px; font-size:.8rem; color:var(--muted)}
+  .slider-wrap input[type=range]{width:130px; vertical-align:middle}
+  .rowbadge{font-size:.76rem; font-weight:700; color:var(--muted); background:#eef1f4; border-radius:12px; padding:2px 10px; margin-left:auto}
+  .dots{display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin:0 0 10px}
+  .dots button{width:12px; height:12px; padding:0; border-radius:50%; border:1px solid var(--accent); background:#fff; cursor:pointer}
+  .dots button.on{background:var(--accent)}
+  .dots button.cur{box-shadow:0 0 0 2px rgba(45,108,223,.35)}
+  .demo-status{font-size:1.02rem; font-weight:500; line-height:1.55; color:var(--ink); background:#fff8e6; border:1px solid #f1d9ad; border-left:5px solid #ff9900; border-radius:10px; padding:12px 16px; margin:4px 0 12px; display:flex; gap:10px; align-items:flex-start}
+  .demo-status::before{content:'\1F4A1'; font-size:1.2rem; line-height:1.4; flex:0 0 auto}
+  .demo-status code{background:#fdeecb}
+  .demo-status b{color:#9a5b00}
+  @keyframes statusFlash{0%{background:#ffe19c; box-shadow:0 0 0 3px rgba(255,153,0,.32)} 100%{background:#fff8e6; box-shadow:none}}
+  .demo-status.flash{animation:statusFlash .65s ease}
+  @media (prefers-reduced-motion: reduce){.demo-status.flash{animation:none}}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:.76rem; color:var(--muted); margin:12px 0 0; align-items:center}
+  .legend span{display:inline-flex; align-items:center; gap:5px}
+  .legend i{width:14px; height:14px; border-radius:3px; display:inline-block; border:1px solid rgba(0,0,0,.12)}
+  td.nullcell{color:var(--bad); font-style:italic; background:repeating-linear-gradient(45deg,#fdecea,#fdecea 6px,#fbe3e0 6px,#fbe3e0 12px)}
+  table.result tbody tr{animation:rowIn .35s ease both}
+  table.result.no-anim tbody tr{animation:none}
+  table.result tbody tr.leftonly td{background:#eaf1fe}
+  table.result tbody tr.rightonly td{background:#fdf3e3}
+  @keyframes rowIn{from{opacity:0; transform:translateY(-6px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion: reduce){table.result tbody tr{animation:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <h1>A Practical Guide to SQL Joins</h1>
+    <p class="sub">Industry best practices, plus what real-world production code actually does &mdash; a student primer on <code>LEFT JOIN</code> vs <code>RIGHT JOIN</code>.</p>
+  </header>
+
+  <nav class="toc">
+    <h2>What's inside</h2>
+    <ol>
+      <li><a href="#refresher">Quick refresher: the join family</a> &middot; <a href="#demo">interactive demo</a></li>
+      <li><a href="#best">Industry best practices</a></li>
+      <li><a href="#left-right">The big one: LEFT vs RIGHT</a></li>
+      <li><a href="#amazon">Case study: what a large codebase actually does</a></li>
+      <li><a href="#takeaways">Key takeaways</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="refresher">1. Quick refresher: the join family</h2>
+  <p>A <strong>join</strong> combines rows from two tables based on a matching condition (the <code>ON</code> clause). The difference between join types is simply <em>which non-matching rows you keep</em>.</p>
+
+  <p>Throughout this guide we use two friendly dummy tables:</p>
+  <ul>
+    <li><code>customers</code> &mdash; one row per customer (<code>customer_id</code>, <code>name</code>)</li>
+    <li><code>orders</code> &mdash; one row per order (<code>order_id</code>, <code>customer_id</code>, <code>amount</code>)</li>
+  </ul>
+
+  <div class="venn">
+    <div class="card">
+      <h4>INNER JOIN</h4>
+      <p>Only rows that match in <em>both</em> tables. Customers who have placed at least one order.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill l">LEFT JOIN</span></h4>
+      <p>All rows from the <em>left</em> table; matching right rows, or <code>NULL</code> where none. All customers, with their orders if any.</p>
+    </div>
+    <div class="card">
+      <h4><span class="pill r">RIGHT JOIN</span></h4>
+      <p>All rows from the <em>right</em> table; matching left rows, or <code>NULL</code> where none. The mirror image of LEFT.</p>
+    </div>
+    <div class="card">
+      <h4>FULL OUTER JOIN</h4>
+      <p>All rows from both tables, matched where possible, <code>NULL</code> elsewhere.</p>
+    </div>
+    <div class="card">
+      <h4>CROSS JOIN</h4>
+      <p>Every row of the left paired with every row of the right &mdash; no <code>ON</code> condition. Produces <code>m &times; n</code> rows.</p>
+    </div>
+  </div>
+
+<pre><code><span class="cm">-- INNER: customers who have orders</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">INNER JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;
+
+<span class="cm">-- LEFT: every customer, even those with zero orders (amount is NULL)</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;
+</code></pre>
+
+  <div class="callout tip">
+    <span class="tag">Mental model</span>
+    <p>"LEFT" and "RIGHT" refer to which side of the <code>JOIN</code> keyword the table is written on. <code>FROM A LEFT JOIN B</code> keeps all of <strong>A</strong>. <code>FROM A RIGHT JOIN B</code> keeps all of <strong>B</strong>.</p>
+  </div>
+
+  <!-- ===== Interactive animated demo ===== -->
+  <h3 id="demo">Try it: animated join demo</h3>
+  <p>Pick a join type, then <strong>play it automatically</strong>, <strong>pause/resume</strong>, or walk through it <strong>one step at a time</strong> with the <em>Step</em> button. Drag the speed slider to change the pace. The join key is <code>customer_id</code>. Note the two edge cases: <code>Cara</code> has no orders, and order <code>O4</code> points at customer <code>C9</code> who doesn't exist &mdash; those are what make the join types differ.</p>
+
+  <div class="demo" id="joinDemo">
+    <div class="demo-tables">
+      <div>
+        <h4>customers <span class="key">(left)</span></h4>
+        <table class="src" id="tblCustomers"><thead><tr><th>customer_id</th><th>name</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div>
+        <h4>orders <span class="key">(right)</span></h4>
+        <table class="src" id="tblOrders"><thead><tr><th>order_id</th><th>customer_id</th><th>amount</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="demo-joins">
+      <button data-join="INNER">INNER JOIN</button>
+      <button data-join="LEFT">LEFT JOIN</button>
+      <button data-join="RIGHT">RIGHT JOIN</button>
+      <button data-join="FULL">FULL OUTER</button>
+      <button data-join="CROSS">CROSS JOIN</button>
+    </div>
+
+    <div class="demo-playback">
+      <button id="playPauseBtn" disabled>&#9658; Play</button>
+      <button id="stepBackBtn" class="ghost" disabled>&#8592; Back</button>
+      <button id="stepBtn" class="ghost" disabled>Step &#8594;</button>
+      <button id="resetBtn" class="ghost">Reset</button>
+      <span class="slider-wrap">Slower
+        <input type="range" id="speedSlider" min="1" max="10" value="3">
+        Faster
+      </span>
+      <span class="rowbadge" id="rowBadge"></span>
+    </div>
+    <div class="dots" id="stepProgress"></div>
+
+    <div class="demo-status" id="demoStatus">Choose a join type above to begin.</div>
+
+    <h4 id="resultTitle">result</h4>
+    <table class="src result" id="tblResult">
+      <thead><tr><th>customer_id</th><th>name</th><th>order_id</th><th>amount</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="legend">
+      <span><i style="background:#fff6d6"></i> being compared</span>
+      <span><i style="background:#e7f6ee"></i> matched</span>
+      <span><i style="background:#eaf1fe"></i> left-only (NULL on right)</span>
+      <span><i style="background:#fdf3e3"></i> right-only (NULL on left)</span>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var customers=[{id:'C1',name:'Ava'},{id:'C2',name:'Ben'},{id:'C3',name:'Cara'}];
+    var orders=[{oid:'O1',cid:'C1',amt:50},{oid:'O2',cid:'C1',amt:20},{oid:'O3',cid:'C2',amt:90},{oid:'O4',cid:'C9',amt:10}];
+    var names={INNER:'INNER JOIN',LEFT:'LEFT JOIN',RIGHT:'RIGHT JOIN',FULL:'FULL OUTER JOIN',CROSS:'CROSS JOIN'};
+    var intro={
+      INNER:'<b>INNER JOIN</b>: keep only pairs where <code>customer_id</code> matches in both tables.',
+      LEFT:'<b>LEFT JOIN</b>: keep every customer; attach orders where they match, else <code>NULL</code>.',
+      RIGHT:'<b>RIGHT JOIN</b>: keep every order; attach the customer where it matches, else <code>NULL</code>.',
+      FULL:'<b>FULL OUTER JOIN</b>: keep everything from both sides; fill gaps with <code>NULL</code>.',
+      CROSS:'<b>CROSS JOIN</b>: no <code>ON</code> condition &mdash; pair every customer with every order.'
+    };
+
+    var custBody=document.querySelector('#tblCustomers tbody');
+    var ordBody=document.querySelector('#tblOrders tbody');
+    var resBody=document.querySelector('#tblResult tbody');
+    var statusEl=document.getElementById('demoStatus');
+    var titleEl=document.getElementById('resultTitle');
+    var playPauseBtn=document.getElementById('playPauseBtn');
+    var stepBackBtn=document.getElementById('stepBackBtn');
+    var stepBtn=document.getElementById('stepBtn');
+    var resetBtn=document.getElementById('resetBtn');
+    var progressEl=document.getElementById('stepProgress');
+    var slider=document.getElementById('speedSlider');
+    var rowBadge=document.getElementById('rowBadge');
+
+    // render source tables
+    customers.forEach(function(c,i){
+      var tr=document.createElement('tr'); tr.id='cust-'+i;
+      tr.innerHTML='<td>'+c.id+'</td><td>'+c.name+'</td>'; custBody.appendChild(tr);
+    });
+    orders.forEach(function(o,j){
+      var tr=document.createElement('tr'); tr.id='ord-'+j;
+      tr.innerHTML='<td>'+o.oid+'</td><td>'+o.cid+'</td><td>$'+o.amt+'</td>'; ordBody.appendChild(tr);
+    });
+
+    // ---- playback engine (step-based) ----
+    var steps=[], idx=0, playing=false, timer=null, speed=600, currentType=null;
+
+    function speedFromSlider(){ return 1100 - slider.value*100; } // 1=1000ms slow .. 10=100ms fast
+    function cancelTimer(){ if(timer){ clearTimeout(timer); timer=null; } }
+    function setStatus(html){ statusEl.innerHTML=html; statusEl.classList.remove('flash'); void statusEl.offsetWidth; statusEl.classList.add('flash'); }
+    function clearHi(){
+      document.querySelectorAll('#joinDemo tr.comparing,#joinDemo tr.matched')
+        .forEach(function(t){ t.classList.remove('comparing','matched'); });
+    }
+    function hi(id){ var e=document.getElementById(id); if(e) e.classList.add('comparing'); }
+    function hiMatch(id){ var e=document.getElementById(id); if(e){ e.classList.remove('comparing'); e.classList.add('matched'); } }
+    function cell(v){ return v===null ? '<td class="nullcell">NULL</td>' : '<td>'+v+'</td>'; }
+    function addRow(cells,cls){
+      var tr=document.createElement('tr'); if(cls) tr.className=cls;
+      tr.innerHTML=cells.map(cell).join(''); resBody.appendChild(tr);
+    }
+    function resetVisuals(){ clearHi(); resBody.innerHTML=''; }
+
+    function buildSteps(type){
+      var s=[];
+      s.push(function(){ clearHi(); setStatus(intro[type]); });
+
+      if(type==='CROSS'){
+        for(var i=0;i<customers.length;i++){
+          for(var j=0;j<orders.length;j++){
+            (function(i,j){ s.push(function(){
+              clearHi(); hi('cust-'+i); hi('ord-'+j);
+              setStatus('Pair <code>'+customers[i].name+'</code> with order <code>'+orders[j].oid+'</code> (no condition).');
+              addRow([customers[i].id,customers[i].name,orders[j].oid,'$'+orders[j].amt],'');
+            }); })(i,j);
+          }
+        }
+        s.push(function(){ clearHi(); setStatus('Done. <b>CROSS JOIN</b> produced <b>'+(customers.length*orders.length)+' rows</b> ('+customers.length+' &times; '+orders.length+').'); });
+        return s;
+      }
+
+      var custIds={}; customers.forEach(function(c){ custIds[c.id]=true; });
+      for(var i=0;i<customers.length;i++){
+        var anyMatch=orders.some(function(o){ return o.cid===customers[i].id; });
+        for(var j=0;j<orders.length;j++){
+          (function(i,j){ s.push(function(){
+            clearHi(); hi('cust-'+i); hi('ord-'+j);
+            var m=customers[i].id===orders[j].cid;
+            setStatus('Compare <code>'+customers[i].id+'</code> = <code>'+orders[j].cid+'</code> ? '+(m?'<b style="color:#1a7f4b">match &#10003;</b>':'no'));
+            if(m){ hiMatch('cust-'+i); hiMatch('ord-'+j); addRow([customers[i].id,customers[i].name,orders[j].oid,'$'+orders[j].amt],''); }
+          }); })(i,j);
+        }
+        if(!anyMatch && (type==='LEFT'||type==='FULL')){
+          (function(i){ s.push(function(){
+            clearHi(); hi('cust-'+i);
+            setStatus('<code>'+customers[i].name+'</code> has no matching order &rarr; keep it with <code>NULL</code> order (outer side).');
+            addRow([customers[i].id,customers[i].name,null,null],'leftonly');
+          }); })(i);
+        }
+      }
+      if(type==='RIGHT'||type==='FULL'){
+        orders.forEach(function(o,j){
+          if(!custIds[o.cid]){
+            (function(j){ s.push(function(){
+              clearHi(); hi('ord-'+j);
+              setStatus('Order <code>'+orders[j].oid+'</code> (customer <code>'+orders[j].cid+'</code>) has no matching customer &rarr; keep it with <code>NULL</code> (outer side).');
+              addRow([null,null,orders[j].oid,'$'+orders[j].amt],'rightonly');
+            }); })(j);
+          }
+        });
+      }
+      s.push(function(){ clearHi(); setStatus('Done. <b>'+names[type]+'</b> produced <b>'+resBody.children.length+' rows</b>.'); });
+      return s;
+    }
+
+    function updateButtons(){
+      var has=steps.length>0, done=has&&idx>=steps.length;
+      playPauseBtn.disabled=!has;
+      playPauseBtn.innerHTML = !has ? '&#9658; Play'
+        : done ? '&#8635; Replay'
+        : playing ? '&#10073;&#10073; Pause'
+        : (idx===0 ? '&#9658; Play' : '&#9658; Resume');
+      stepBtn.disabled = !has || done;
+      stepBackBtn.disabled = !has || idx===0;
+      renderDots();
+      if(rowBadge){ var n=resBody.children.length; rowBadge.textContent = (has && n) ? (n+' row'+(n===1?'':'s')) : ''; }
+    }
+    function renderDots(){
+      if(steps.length===0){ progressEl.innerHTML=''; return; }
+      var html='';
+      for(var i=0;i<steps.length;i++){ html+='<button data-i="'+i+'" class="'+(i<idx?'on':'')+(i===idx-1?' cur':'')+'" title="step '+(i+1)+'"></button>'; }
+      progressEl.innerHTML=html;
+    }
+
+    function tick(){
+      if(idx>=steps.length){ playing=false; updateButtons(); return; }
+      steps[idx](); idx++;
+      updateButtons();
+      if(playing && idx<steps.length){ timer=setTimeout(tick, speed); }
+      else { playing=false; updateButtons(); }
+    }
+    function play(){
+      if(steps.length===0 || idx>=steps.length || playing) return;
+      playing=true; cancelTimer(); updateButtons(); tick();
+    }
+    function pause(){ playing=false; cancelTimer(); updateButtons(); }
+    function stepOnce(){
+      if(steps.length===0 || idx>=steps.length) return;
+      playing=false; cancelTimer(); steps[idx](); idx++; updateButtons();
+    }
+    function replay(){ cancelTimer(); idx=0; resetVisuals(); playing=true; updateButtons(); tick(); }
+
+    function goTo(n){
+      playing=false; cancelTimer();
+      var tbl=document.getElementById('tblResult');
+      tbl.classList.add('no-anim');        // suppress fade-in while we rebuild
+      resetVisuals();
+      for(var k=0;k<n;k++){ steps[k](); }
+      idx=n;
+      void tbl.offsetWidth;                 // force reflow, then re-enable animation
+      tbl.classList.remove('no-anim');
+      updateButtons();
+    }
+    function stepBack(){ if(idx>0){ goTo(idx-1); } }
+
+    function loadSteps(type, autoplay){
+      cancelTimer(); playing=false; currentType=type;
+      resetVisuals(); steps=buildSteps(type); idx=0;
+      titleEl.textContent=names[type]+' result';
+      setStatus('Loaded <b>'+names[type]+'</b> &mdash; '+steps.length+' steps. Step-by-step mode: press <b>Step &#8594;</b> to advance one at a time, or <b>Play</b> to auto-run.');
+      updateButtons();
+      if(autoplay) play();
+    }
+    function reset(){
+      cancelTimer(); playing=false; steps=[]; idx=0; currentType=null;
+      resetVisuals(); titleEl.textContent='result';
+      setStatus('Choose a join type above to begin.'); updateButtons();
+    }
+
+    // ---- wire up controls ----
+    document.querySelectorAll('#joinDemo .demo-joins button').forEach(function(b){
+      b.addEventListener('click', function(){ loadSteps(b.getAttribute('data-join'), false); });
+    });
+    playPauseBtn.addEventListener('click', function(){
+      if(steps.length===0) return;
+      if(idx>=steps.length){ replay(); }
+      else if(playing){ pause(); }
+      else { play(); }
+    });
+    stepBtn.addEventListener('click', stepOnce);
+    stepBackBtn.addEventListener('click', stepBack);
+    resetBtn.addEventListener('click', reset);
+    slider.addEventListener('input', function(){ speed=speedFromSlider(); });
+    progressEl.addEventListener('click', function(ev){
+      var b=ev.target.closest && ev.target.closest('button'); if(!b) return;
+      goTo(parseInt(b.getAttribute('data-i'),10)+1);
+    });
+    document.addEventListener('keydown', function(ev){
+      var t=ev.target; if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA')) return;
+      if(steps.length===0) return;
+      if(ev.key==='ArrowRight'){ stepOnce(); ev.preventDefault(); }
+      else if(ev.key==='ArrowLeft'){ stepBack(); ev.preventDefault(); }
+      else if(ev.key===' '){ if(idx>=steps.length) replay(); else if(playing) pause(); else play(); ev.preventDefault(); }
+    });
+    speed=speedFromSlider();
+    updateButtons();
+  })();
+  </script>
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="best">2. Industry best practices</h2>
+  <p class="key">These are the conventions you'll find echoed across widely-used SQL style guides (e.g. Holywell's <em>SQL Style Guide</em>, Mozilla's data-engineering guidelines, the dbt and GitLab analytics handbooks) and in most production teams.</p>
+
+  <h3>2.1 Prefer explicit <code>JOIN ... ON</code> over comma joins</h3>
+  <div class="callout good">
+    <span class="tag">Do</span>
+<pre style="margin:6px 0 0"><code><span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
+  </div>
+  <div class="callout bad">
+    <span class="tag">Avoid</span>
+<pre style="margin:6px 0 0"><code><span class="cm">-- old-style implicit join: easy to forget the filter and get a cross product</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c, orders o
+<span class="kw">WHERE</span> o.customer_id = c.customer_id;</code></pre>
+  </div>
+
+  <h3>2.2 Standardize on LEFT JOIN; avoid RIGHT JOIN</h3>
+  <p>This is the single most common team-level convention. Reading a query top-to-bottom, the first table in <code>FROM</code> is your "anchor," and every <code>LEFT JOIN</code> adds optional detail to it. RIGHT JOIN forces the reader to mentally flip that direction. Since any RIGHT JOIN can be rewritten as a LEFT JOIN (see &sect;3), most style guides simply ban it.</p>
+
+  <h3>2.3 Always qualify columns with table aliases</h3>
+  <p>Use short, meaningful aliases and prefix every column. It prevents ambiguity and survives future schema changes.</p>
+<pre><code><span class="cm">-- good: short aliases, every column qualified</span>
+<span class="kw">SELECT</span> c.name, o.order_id, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
+
+  <h3>2.4 Put join logic in <code>ON</code>, filtering in <code>WHERE</code> &mdash; carefully</h3>
+  <div class="callout warn">
+    <span class="tag">Classic trap</span>
+    <p>Putting a condition on the <em>right</em> table of a LEFT JOIN into the <code>WHERE</code> clause silently turns it into an INNER JOIN, because <code>NULL</code> rows fail the filter.</p>
+<pre style="margin:8px 0 0"><code><span class="cm">-- BUG: this drops customers with no orders -- acts like INNER JOIN</span>
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id
+<span class="kw">WHERE</span> o.amount &gt; 100;
+
+<span class="cm">-- FIX: move the condition into the ON clause to preserve the outer side</span>
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o
+  <span class="kw">ON</span> o.customer_id = c.customer_id
+  <span class="kw">AND</span> o.amount &gt; 100;</code></pre>
+  </div>
+
+  <h3>2.5 Beware row multiplication ("fan-out")</h3>
+  <p>If the right table has multiple matches per key, your row count multiplies and any <code>SUM()</code> double-counts. Aggregate the detail table first (in a CTE) before joining, or be deliberate about the grain.</p>
+<pre><code><span class="cm">-- aggregate first, then join one-row-per-customer</span>
+<span class="kw">WITH</span> order_totals <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> customer_id, <span class="kw">SUM</span>(amount) <span class="kw">AS</span> total
+  <span class="kw">FROM</span> orders
+  <span class="kw">GROUP BY</span> customer_id
+)
+<span class="kw">SELECT</span> c.name, t.total
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> order_totals t <span class="kw">ON</span> t.customer_id = c.customer_id;</code></pre>
+
+  <h3>2.6 Other habits worth keeping</h3>
+  <ul>
+    <li><strong>Join on indexed / typed keys.</strong> Joining on mismatched types or wrapping keys in functions (e.g. <code>LOWER(a)=LOWER(b)</code>) can disable index use. If you must normalize, do it once upstream.</li>
+    <li><strong>Use <code>COALESCE</code></strong> to give outer-join <code>NULL</code>s a sensible default (<code>COALESCE(t.total, 0)</code>).</li>
+    <li><strong>Filter early.</strong> Reduce each side (date ranges, partitions) before joining large tables.</li>
+    <li><strong>Comment the intent</strong> of an outer join: "left join so customers with no orders are still listed."</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="left-right">3. The big one: LEFT vs RIGHT</h2>
+
+  <div class="callout tip">
+    <span class="tag">The one fact to memorize</span>
+    <p><strong>Every RIGHT JOIN can be rewritten as a LEFT JOIN by swapping the order of the two tables.</strong> The result set is identical. RIGHT JOIN is pure syntactic sugar &mdash; there is no query that <em>requires</em> it.</p>
+  </div>
+
+  <p>These two queries are exactly equivalent:</p>
+<pre><code><span class="cm">-- RIGHT JOIN: keep all rows from the second-listed table (orders)</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">RIGHT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;
+
+<span class="cm">-- Same result, written as a LEFT JOIN by swapping table order</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> orders o
+<span class="kw">LEFT JOIN</span> customers c <span class="kw">ON</span> c.customer_id = o.customer_id;</code></pre>
+
+  <p>So if RIGHT JOIN is never necessary, why does it appear at all? Usually for <em>ergonomics</em>: an author wants to write a big "main" table first in the <code>FROM</code> clause for readability, but actually wants to preserve rows from the <em>other</em> table. RIGHT JOIN lets them do that without reordering. The cost is that the next reader has to flip their mental model &mdash; which is exactly why teams discourage it.</p>
+
+  <!-- ============================================================ -->
+  <div class="amz-band">
+  <span class="badge-amz">Amazon section</span>
+  <h2 class="section" id="amazon">4. Case study: what a large codebase actually does</h2>
+  <p>To see how theory meets practice, we surveyed join usage across a very large industry codebase (Amazon's internal code search). All table and column names below have been replaced with generic dummy names; the patterns and proportions are faithful to what was found.</p>
+
+  <h3>4.1 The numbers</h3>
+  <p>Counts are approximate index match totals. The raw cross-file <code>RIGHT JOIN</code> number is inflated by minified JavaScript (SQL-formatter keyword lists, vendored libraries) that aren't real joins, so the <code>.sql</code>-only row is the honest measure.</p>
+
+  <table>
+    <thead>
+      <tr><th>Scope</th><th class="num">LEFT JOIN</th><th class="num">RIGHT JOIN</th><th class="num">Ratio (L:R)</th><th class="num">RIGHT share</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>All files</td><td class="num">~309,000</td><td class="num">~19,600</td><td class="num">~16 : 1</td><td class="num">~6%</td></tr>
+      <tr><td><code>.sql</code> files only</td><td class="num">~191,000</td><td class="num">~4,300</td><td class="num">~45 : 1</td><td class="num">~2%</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout good">
+    <span class="tag">Headline</span>
+    <p>In real SQL, <strong>RIGHT JOIN is about 1 in 45 outer joins (~2%)</strong>. LEFT JOIN is overwhelmingly the convention &mdash; matching best-practice &sect;2.2. And a chunk of even those RIGHT JOIN hits are database-engine <em>test fixtures</em>, not application queries.</p>
+  </div>
+
+  <h3>4.2 Where RIGHT JOIN actually showed up &mdash; and whether it was necessary</h3>
+  <p>Every genuine application query found was a behavior-preserving table-swap away from a LEFT JOIN. Here are the recurring patterns, with anonymized examples.</p>
+
+  <h4>Pattern A &mdash; Keep every calendar date in a trend report</h4>
+  <p>Authors wrote the heavy aggregation subquery first, then used RIGHT JOIN to retain <em>all</em> dates from a calendar dimension (so days with zero activity still appear).</p>
+<pre><code><span class="cm">-- As written (RIGHT JOIN keeps all calendar rows)</span>
+<span class="kw">FROM</span> (<span class="kw">SELECT</span> metric_date, <span class="kw">SUM</span>(revenue) rev
+      <span class="kw">FROM</span> daily_metrics <span class="kw">GROUP BY</span> metric_date) t1
+<span class="kw">RIGHT JOIN</span> dim_calendar c <span class="kw">ON</span> c.cal_date = t1.metric_date;
+
+<span class="cm">-- Equivalent LEFT JOIN (preferred): list the calendar first</span>
+<span class="kw">FROM</span> dim_calendar c
+<span class="kw">LEFT JOIN</span> (<span class="kw">SELECT</span> metric_date, <span class="kw">SUM</span>(revenue) rev
+           <span class="kw">FROM</span> daily_metrics <span class="kw">GROUP BY</span> metric_date) t1
+  <span class="kw">ON</span> c.cal_date = t1.metric_date;</code></pre>
+  <p class="key"><strong>Was RIGHT the only way?</strong> No &mdash; pure readability choice.</p>
+
+  <h4>Pattern B &mdash; Preserve a curated "seed" list while probing a huge fact table</h4>
+  <p>Keep all IDs from a small curated list; attach metrics from a large fact table where they exist. The big table was listed first out of habit.</p>
+<pre><code><span class="cm">-- As written</span>
+<span class="kw">FROM</span> daily_product_metrics m
+<span class="kw">RIGHT JOIN</span> (<span class="kw">SELECT DISTINCT</span> product_id
+            <span class="kw">FROM</span> curated_product_list
+            <span class="kw">WHERE</span> status = <span class="st">'active'</span>) seed
+  <span class="kw">ON</span> m.product_id = seed.product_id;
+
+<span class="cm">-- Equivalent LEFT JOIN (preferred): seed list is the anchor</span>
+<span class="kw">FROM</span> (<span class="kw">SELECT DISTINCT</span> product_id
+      <span class="kw">FROM</span> curated_product_list
+      <span class="kw">WHERE</span> status = <span class="st">'active'</span>) seed
+<span class="kw">LEFT JOIN</span> daily_product_metrics m <span class="kw">ON</span> m.product_id = seed.product_id;</code></pre>
+  <p class="key"><strong>Was RIGHT the only way?</strong> No.</p>
+
+  <h4>Pattern C &mdash; Lookup table that must keep all keys</h4>
+  <p>Keep every region in a mapping table, look up its currency rate.</p>
+<pre><code><span class="cm">-- As written</span>
+<span class="kw">FROM</span> currency_rates r
+<span class="kw">RIGHT JOIN</span> region_map rm <span class="kw">ON</span> r.from_code = rm.from_code
+<span class="kw">WHERE</span> r.to_code = <span class="st">'USD'</span>;
+
+<span class="cm">-- Equivalent (preferred): anchor on the region map,</span>
+<span class="cm">-- and move the rate filter into ON so it stays a true outer join</span>
+<span class="kw">FROM</span> region_map rm
+<span class="kw">LEFT JOIN</span> currency_rates r
+  <span class="kw">ON</span> r.from_code = rm.from_code <span class="kw">AND</span> r.to_code = <span class="st">'USD'</span>;</code></pre>
+  <div class="callout warn">
+    <span class="tag">Bonus lesson</span>
+    <p>The original puts <code>r.to_code = 'USD'</code> in the <code>WHERE</code> clause &mdash; the &sect;2.4 trap. On the LEFT-rewrite it belongs in <code>ON</code> to keep regions that have no matching rate.</p>
+  </div>
+  <p class="key"><strong>Was RIGHT the only way?</strong> No.</p>
+
+  <h4>Pattern D &mdash; Reconciliation: keep the full "expected" set to find what's missing</h4>
+  <p>A two-stage design materializes a small set of expected/mismatch records, then RIGHT JOINs it against a large source table so <em>all</em> expected rows survive.</p>
+<pre><code><span class="cm">-- As written</span>
+<span class="kw">FROM</span> source_records s
+<span class="kw">RIGHT JOIN</span> expected_records e <span class="kw">ON</span> s.record_id = e.record_id
+<span class="kw">WHERE</span> s.record_id <span class="kw">IS NULL</span>;   <span class="cm">-- rows expected but missing from source</span>
+
+<span class="cm">-- Equivalent LEFT JOIN (preferred)</span>
+<span class="kw">FROM</span> expected_records e
+<span class="kw">LEFT JOIN</span> source_records s <span class="kw">ON</span> s.record_id = e.record_id
+<span class="kw">WHERE</span> s.record_id <span class="kw">IS NULL</span>;</code></pre>
+  <p class="key"><strong>Was RIGHT the only way?</strong> No &mdash; driven by a performance/staging design, not necessity.</p>
+
+  <h4>Pattern E &mdash; The one legitimate "must use RIGHT JOIN" case</h4>
+  <p>The only place RIGHT JOIN was genuinely required was inside <strong>database-engine test suites</strong> (the query engines' own tests). There, the explicit purpose is to verify that the <code>RIGHT JOIN</code> keyword parses and plans correctly &mdash; the keyword itself is the thing under test. Even then, the underlying query is still expressible as a LEFT JOIN; it's the <em>parser feature</em> that needs exercising.</p>
+
+  <details>
+    <summary>Summary table: was RIGHT JOIN ever the only option?</summary>
+    <table style="margin-top:12px">
+      <thead><tr><th>Pattern</th><th>Why RIGHT was used</th><th>Could be LEFT JOIN?</th></tr></thead>
+      <tbody>
+        <tr><td>A. Calendar trend</td><td>Keep all dates; big subquery written first</td><td>Yes</td></tr>
+        <tr><td>B. Seed list + fact table</td><td>Preserve seed IDs; fact table written first</td><td>Yes</td></tr>
+        <tr><td>C. Lookup mapping</td><td>Keep all mapping keys</td><td>Yes</td></tr>
+        <tr><td>D. Reconciliation</td><td>Keep all expected rows; staging design</td><td>Yes</td></tr>
+        <tr><td>E. Engine test suites</td><td>Testing the RIGHT JOIN keyword itself</td><td>Required as a test target only</td></tr>
+      </tbody>
+    </table>
+  </details>
+  </div><!-- /amz-band -->
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="takeaways">5. Key takeaways</h2>
+  <ol>
+    <li><strong>Default to LEFT JOIN.</strong> It reads top-to-bottom: anchor table first, optional detail added on. Real production code uses it ~45&times; more than RIGHT JOIN.</li>
+    <li><strong>RIGHT JOIN is never required.</strong> Swap the table order and it becomes a LEFT JOIN with identical results.</li>
+    <li><strong>If you see a RIGHT JOIN, it's usually a readability shortcut</strong> &mdash; someone wanted the big table written first. Prefer rewriting it as a LEFT JOIN.</li>
+    <li><strong>Filtering the outer table in <code>WHERE</code> quietly cancels the outer join.</strong> Keep such conditions in <code>ON</code>.</li>
+    <li><strong>Watch the grain.</strong> Aggregate detail tables before joining to avoid double-counting.</li>
+  </ol>
+
+  <footer>
+    <p>Educational material. All table and column names are fictional dummies; statistics are anonymized, approximate, point-in-time figures gathered from an internal code-search index and rounded. Best-practice guidance reflects widely-shared SQL style conventions.</p>
+  </footer>
+
+</div>
+</body>
+</html>
