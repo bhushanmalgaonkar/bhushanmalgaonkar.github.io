@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive SQL Keyword Playground</title>
+<style>
+  :root{
+    --bg:#fdfdfb; --ink:#1f2328; --muted:#5c6670; --line:#e3e6ea;
+    --accent:#2d6cdf; --accent-soft:#eaf1fe;
+    --good:#1a7f4b; --good-soft:#e7f6ee;
+    --warn:#b4690e; --warn-soft:#fdf3e3;
+    --bad:#c0392b; --bad-soft:#fdecea;
+    --code-bg:#1d2530; --code-ink:#e7edf5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:none; margin:0; padding:28px 32px 96px}
+  header.page{border-bottom:3px solid var(--accent); padding-bottom:20px; margin-bottom:18px}
+  header.page h1{font-size:2rem; margin:0 0 6px; letter-spacing:-.02em}
+  header.page p.sub{color:var(--muted); margin:0; font-size:1.02rem}
+  h2.section{font-size:1.25rem; margin:34px 0 8px}
+  code{background:#eef1f4; padding:1px 6px; border-radius:5px; font-family:"SF Mono",Menlo,Consolas,monospace; font-size:.88em}
+  .ref{display:flex; gap:22px; flex-wrap:wrap; margin:10px 0 6px}
+  .ref>div{flex:1 1 260px}
+  .ref h4{margin:0 0 6px; font-size:.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+  table.src{width:100%; font-size:.84rem; border-collapse:collapse; background:#fff}
+  table.src th,table.src td{border:1px solid var(--line); padding:6px 9px; text-align:left}
+  table.src th{background:#f3f5f8}
+
+  .groups{margin:14px 0 4px}
+  .group{margin:12px 0}
+  .group .glabel{font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:6px}
+  .chips{display:flex; gap:7px; flex-wrap:wrap}
+  .chips button{font:600 .82rem/1 inherit; padding:7px 11px; border-radius:18px; cursor:pointer;
+    border:1px solid var(--line); background:#fff; color:var(--ink); transition:all .12s}
+  .chips button:hover{border-color:var(--accent); color:var(--accent)}
+  .chips button.active{background:var(--accent); border-color:var(--accent); color:#fff}
+
+  .stage{border:1px solid var(--line); border-radius:12px; padding:16px 18px 20px; background:#fff; margin-top:16px}
+  .demo-playback{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 12px; padding:10px 12px; background:#f7f9fb; border:1px solid var(--line); border-radius:8px}
+  .demo-playback button{font:600 .85rem/1 inherit; padding:8px 13px; border-radius:8px; cursor:pointer;
+    border:1px solid var(--accent); background:var(--accent); color:#fff; transition:filter .15s}
+  .demo-playback button:hover:not(:disabled){filter:brightness(1.08)}
+  .demo-playback button.ghost{background:#fff; color:var(--muted); border-color:var(--line)}
+  .demo-playback button:disabled{opacity:.4; cursor:default; filter:none}
+  .slider-wrap{display:flex; align-items:center; gap:8px; font-size:.8rem; color:var(--muted)}
+  .slider-wrap input[type=range]{width:120px; vertical-align:middle}
+  .progress{font-size:.8rem; color:var(--muted); font-variant-numeric:tabular-nums; margin-left:auto; font-weight:600}
+
+  .sqlbox{background:var(--code-bg); color:var(--code-ink); border-radius:10px; padding:12px 6px; font-family:"SF Mono",Menlo,Consolas,monospace; font-size:.85rem; margin:0 0 12px}
+  .sqlline{padding:2px 12px; border-left:3px solid transparent; white-space:pre; transition:background .15s}
+  .sqlline.active{background:rgba(127,180,255,.16); border-left-color:#7fb4ff}
+  .kw{color:#7fb4ff; font-weight:600}
+
+  .demo-status{
+    font-size:1.02rem; font-weight:500; line-height:1.55; color:var(--ink);
+    background:#fff8e6; border:1px solid #f1d9ad; border-left:5px solid var(--amz);
+    border-radius:10px; padding:12px 16px; margin:0 0 14px;
+    display:flex; gap:10px; align-items:flex-start;
+  }
+  .demo-status::before{content:'\1F4A1'; font-size:1.2rem; line-height:1.4; flex:0 0 auto}
+  .demo-status code{background:#fdeecb}
+  .demo-status b{color:#9a5b00}
+  @keyframes statusFlash{0%{background:#ffe19c; box-shadow:0 0 0 3px rgba(255,153,0,.32)} 100%{background:#fff8e6; box-shadow:none}}
+  .demo-status.flash{animation:statusFlash .65s ease}
+  @media (prefers-reduced-motion: reduce){.demo-status.flash{animation:none}}
+
+  .work{width:100%; font-size:.85rem; border-collapse:collapse}
+  .work th,.work td{border:1px solid var(--line); padding:6px 10px; text-align:left}
+  .work th{background:#f3f5f8} .work th.addcol{background:#dbe7fb}
+  .work tbody tr{animation:rowIn .32s ease both}
+  .work tr.keep td{background:var(--good-soft)}
+  .work tr.drop td{background:#fbe3e0; color:#b94a3b; text-decoration:line-through; opacity:.75}
+  .work tr.add td{background:#eaf1fe}
+  .work tr.changed td{background:var(--warn-soft)}
+  .work tr.hl td{background:#fff6d6}
+  .work td.hl{background:#fff6d6; font-weight:600}
+  .work td.changed{background:var(--warn-soft); font-weight:600}
+  .work td.nullcell{color:var(--bad); font-style:italic}
+  .empty{color:var(--muted); font-style:italic; padding:10px 2px}
+  @keyframes rowIn{from{opacity:0; transform:translateY(-5px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion: reduce){.work tbody tr{animation:none}}
+
+  .layout{display:flex; gap:22px; align-items:flex-start; margin-top:8px}
+  .picker{flex:0 0 50%; position:sticky; top:14px}
+  .picker h2.section{margin-top:0}
+  .stage-col{flex:1 1 auto; min-width:0}
+  .stage-col .stage{margin-top:0}
+  .work tr.g0 td{background:#eef3ff}
+  .work tr.g1 td{background:#eafaf0}
+  .work tr.g2 td{background:#fff3e8}
+  @media (max-width:820px){ .layout{flex-direction:column} .picker{position:static; flex:1 1 auto; width:100%} }
+
+  footer{margin-top:48px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:.84rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <h1>Interactive SQL Keyword Playground</h1>
+    <p class="sub">Pick any keyword and watch what it does to real rows &mdash; play, pause/resume, or step forward and back at your own pace.</p>
+  </header>
+
+  <h2 class="section">Sample data</h2>
+  <div class="ref">
+    <div>
+      <h4>employees</h4>
+      <table class="src">
+        <thead><tr><th>id</th><th>name</th><th>dept</th><th>salary</th><th>age</th><th>bonus</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Ava</td><td>Sales</td><td>50</td><td>30</td><td>5</td></tr>
+          <tr><td>2</td><td>Ben</td><td>Sales</td><td>60</td><td>45</td><td>NULL</td></tr>
+          <tr><td>3</td><td>Cara</td><td>Tech</td><td>90</td><td>38</td><td>10</td></tr>
+          <tr><td>4</td><td>Dan</td><td>Tech</td><td>90</td><td>29</td><td>NULL</td></tr>
+          <tr><td>5</td><td>Eve</td><td>HR</td><td>55</td><td>52</td><td>3</td></tr>
+          <tr><td>6</td><td>Finn</td><td>Tech</td><td>70</td><td>41</td><td>8</td></tr>
+        </tbody>
+      </table>
+      <p class="key" style="font-size:.8rem;color:var(--muted)">salary &amp; bonus are in $k.</p>
+    </div>
+    <div>
+      <h4>For set operations</h4>
+      <table class="src">
+        <thead><tr><th>list_2023</th><th>list_2024</th></tr></thead>
+        <tbody>
+          <tr><td>Ava</td><td>Ben</td></tr>
+          <tr><td>Ben</td><td>Cara</td></tr>
+          <tr><td>Cara</td><td>Dan</td></tr>
+        </tbody>
+      </table>
+      <h4 style="margin-top:12px">For DDL</h4>
+      <table class="src">
+        <thead><tr><th>id</th><th>title</th></tr></thead>
+        <tbody><tr><td>1</td><td>Apollo</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="layout">
+  <aside class="picker">
+  <h2 class="section">Choose a keyword</h2>
+  <div class="groups" id="groups">
+    <div class="group"><div class="glabel">Query clauses</div><div class="chips">
+      <button data-demo="SELECT">SELECT</button>
+      <button data-demo="DISTINCT">DISTINCT</button>
+      <button data-demo="WHERE">WHERE</button>
+      <button data-demo="ORDERBY">ORDER BY</button>
+      <button data-demo="LIMIT">LIMIT</button>
+      <button data-demo="OFFSET">OFFSET</button>
+    </div></div>
+    <div class="group"><div class="glabel">Predicates &amp; operators</div><div class="chips">
+      <button data-demo="AND">AND</button>
+      <button data-demo="OR">OR</button>
+      <button data-demo="NOT">NOT</button>
+      <button data-demo="IN">IN</button>
+      <button data-demo="BETWEEN">BETWEEN</button>
+      <button data-demo="LIKE">LIKE</button>
+      <button data-demo="ISNULL">IS NULL</button>
+    </div></div>
+    <div class="group"><div class="glabel">Aggregation</div><div class="chips">
+      <button data-demo="COUNT">COUNT</button>
+      <button data-demo="AGG">SUM / AVG / MIN / MAX</button>
+      <button data-demo="GROUPBY">GROUP BY</button>
+      <button data-demo="HAVING">HAVING</button>
+    </div></div>
+    <div class="group"><div class="glabel">Window functions</div><div class="chips">
+      <button data-demo="WROWNUM">ROW_NUMBER</button>
+      <button data-demo="WRANK">RANK / DENSE_RANK</button>
+      <button data-demo="WPART">PARTITION BY</button>
+      <button data-demo="WRUNSUM">Running SUM (OVER)</button>
+    </div></div>
+    <div class="group"><div class="glabel">Expressions</div><div class="chips">
+      <button data-demo="CASE">CASE</button>
+      <button data-demo="AS">AS (alias)</button>
+      <button data-demo="WITH">WITH (CTE)</button>
+    </div></div>
+    <div class="group"><div class="glabel">Subqueries</div><div class="chips">
+      <button data-demo="SUBSCALAR">Scalar subquery</button>
+      <button data-demo="SUBIN">Subquery + IN</button>
+      <button data-demo="SUBCORR">Correlated</button>
+      <button data-demo="SUBEXISTS">EXISTS</button>
+      <button data-demo="SUBFROM">In FROM (derived)</button>
+      <button data-demo="SUBSELECT">In SELECT</button>
+      <button data-demo="SUBANY">ANY</button>
+      <button data-demo="SUBALL">ALL</button>
+      <button data-demo="SUBROW">Multi-column IN</button>
+      <button data-demo="SUBNOTIN">NOT IN (NULL trap)</button>
+      <button data-demo="SUBDML">DELETE + subquery</button>
+    </div></div>
+    <div class="group"><div class="glabel">Set operations</div><div class="chips">
+      <button data-demo="UNION">UNION</button>
+      <button data-demo="UNIONALL">UNION ALL</button>
+      <button data-demo="INTERSECT">INTERSECT</button>
+      <button data-demo="EXCEPT">EXCEPT</button>
+    </div></div>
+    <div class="group"><div class="glabel">Data changes (DML)</div><div class="chips">
+      <button data-demo="INSERT">INSERT</button>
+      <button data-demo="UPDATE">UPDATE</button>
+      <button data-demo="DELETE">DELETE</button>
+    </div></div>
+    <div class="group"><div class="glabel">Schema (DDL)</div><div class="chips">
+      <button data-demo="CREATE">CREATE TABLE</button>
+      <button data-demo="ALTER">ALTER TABLE</button>
+      <button data-demo="DROP">DROP TABLE</button>
+    </div></div>
+  </div>
+  </aside>
+
+  <section class="stage-col">
+  <div class="stage" id="stage">
+    <div class="demo-playback">
+      <button id="playPauseBtn" disabled>&#9658; Play</button>
+      <button id="stepBackBtn" class="ghost" disabled>&#8592; Back</button>
+      <button id="stepBtn" class="ghost" disabled>Step &#8594;</button>
+      <button id="resetBtn" class="ghost">Reset</button>
+      <span class="slider-wrap">Slower
+        <input type="range" id="speedSlider" min="1" max="10" value="3">
+        Faster
+      </span>
+      <span class="progress" id="stepProgress"></span>
+    </div>
+
+    <div class="demo-status" id="demoStatus">Pick any keyword to load its animated demo.</div>
+    <div class="sqlbox" id="sqlBox"><div class="sqlline">-- choose a keyword above</div></div>
+
+    <table class="work" id="workTable"><thead></thead><tbody></tbody></table>
+    <div class="empty" id="emptyMsg" style="display:none"></div>
+  </div>
+  </section>
+  </div>
+
+  <footer>
+    <p>Educational material. Table and column names are fictional. Behaviour shown reflects standard ANSI SQL semantics; exact syntax (e.g. <code>LIMIT</code> vs <code>FETCH FIRST</code>, <code>EXCEPT</code> vs <code>MINUS</code>) varies slightly by database engine.</p>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var FULL=['id','name','dept','salary','age','bonus'];
+  var EMP=[
+    {id:1,name:'Ava', dept:'Sales',salary:50,age:30,bonus:5},
+    {id:2,name:'Ben', dept:'Sales',salary:60,age:45,bonus:null},
+    {id:3,name:'Cara',dept:'Tech', salary:90,age:38,bonus:10},
+    {id:4,name:'Dan', dept:'Tech', salary:90,age:29,bonus:null},
+    {id:5,name:'Eve', dept:'HR',   salary:55,age:52,bonus:3},
+    {id:6,name:'Finn',dept:'Tech', salary:70,age:41,bonus:8}
+  ];
+  function full(e){ return [e.id,e.name,e.dept,e.salary,e.age,e.bonus]; }
+  function S(sql,active,status,cols,rows){ return {sql:sql,active:active,status:status,cols:cols,rows:rows}; }
+  function r(c,cls,cell){ return {c:c,cls:cls||'',cell:cell||null}; }
+
+  // ---------- demo registry ----------
+  var demos={};
+
+  demos.SELECT={title:'SELECT',build:function(){
+    var sql=['SELECT name, dept','FROM employees;'];
+    var all=EMP.map(function(e){return r(full(e));});
+    var hl=EMP.map(function(e){return r(full(e),'',{1:'hl',2:'hl'});});
+    var proj=EMP.map(function(e){return r([e.name,e.dept]);});
+    return [
+      S(sql,1,'Start with every row and column of <code>employees</code>.',FULL,all),
+      S(sql,0,'<b>SELECT</b> marks which columns to keep: <code>name</code> and <code>dept</code> (highlighted).',FULL,hl),
+      S(sql,0,'Every other column is dropped from the output.',['name','dept'],proj)
+    ];
+  }};
+
+  demos.DISTINCT={title:'DISTINCT',build:function(){
+    var sql=['SELECT DISTINCT dept','FROM employees;'];
+    var dupes=EMP.map(function(e){return r([e.dept]);});
+    var seen={};
+    var marked=EMP.map(function(e){ var dup=seen[e.dept]; seen[e.dept]=true; return r([e.dept], dup?'drop':'keep'); });
+    return [
+      S(sql,1,'All <code>dept</code> values &mdash; note the repeats.',['dept'],dupes),
+      S(sql,0,'<b>DISTINCT</b> scans for repeats: the first of each value is kept (green); later duplicates are removed (struck out).',['dept'],marked),
+      S(sql,0,'Only unique values remain.',['dept'],[r(['Sales'],'keep'),r(['Tech'],'keep'),r(['HR'],'keep')])
+    ];
+  }};
+
+  demos.WHERE={title:'WHERE',build:function(){
+    var sql=['SELECT *','FROM employees','WHERE salary > 60;'];
+    var all=EMP.map(function(e){return r(full(e));});
+    var tested=EMP.map(function(e){return r(full(e), e.salary>60?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.salary>60;}).map(function(e){return r(full(e),'keep');});
+    return [
+      S(sql,1,'Begin with all rows.',FULL,all),
+      S(sql,2,'<b>WHERE</b> tests each row: <code>salary &gt; 60</code> &mdash; green stays, red is filtered out.',FULL,tested),
+      S(sql,0,'Only matching rows remain.',FULL,kept)
+    ];
+  }};
+
+  demos.ORDERBY={title:'ORDER BY',build:function(){
+    var sql=['SELECT name, salary','FROM employees','ORDER BY salary DESC;'];
+    var unsorted=EMP.map(function(e){return r([e.name,e.salary]);});
+    var sorted=EMP.slice().sort(function(a,b){return b.salary-a.salary;}).map(function(e){return r([e.name,e.salary]);});
+    return [
+      S(sql,1,'Unsorted rows, in natural order.',['name','salary'],unsorted),
+      S(sql,2,'<b>ORDER BY salary DESC</b> sorts highest salary first.',['name','salary'],sorted)
+    ];
+  }};
+
+  demos.LIMIT={title:'LIMIT',build:function(){
+    var sql=['SELECT name, salary','FROM employees','ORDER BY salary DESC','LIMIT 3;'];
+    var sorted=EMP.slice().sort(function(a,b){return b.salary-a.salary;});
+    var sortedRows=sorted.map(function(e){return r([e.name,e.salary]);});
+    var marked=sorted.map(function(e,i){return r([e.name,e.salary], i<3?'keep':'drop');});
+    var top=sorted.slice(0,3).map(function(e){return r([e.name,e.salary],'keep');});
+    return [
+      S(sql,2,'First sort by salary, highest first.',['name','salary'],sortedRows),
+      S(sql,3,'<b>LIMIT 3</b> keeps only the first 3 rows; the rest are discarded.',['name','salary'],marked),
+      S(sql,3,'Final result: the top 3 earners.',['name','salary'],top)
+    ];
+  }};
+
+  demos.OFFSET={title:'OFFSET',build:function(){
+    var sql=['SELECT name, salary','FROM employees','ORDER BY salary DESC','LIMIT 2 OFFSET 2;'];
+    var sorted=EMP.slice().sort(function(a,b){return b.salary-a.salary;});
+    var sortedRows=sorted.map(function(e){return r([e.name,e.salary]);});
+    var skip=sorted.map(function(e,i){return r([e.name,e.salary], i<2?'drop':'');});
+    var page=sorted.map(function(e,i){return r([e.name,e.salary], (i>=2&&i<4)?'keep':'drop');});
+    var fin=sorted.slice(2,4).map(function(e){return r([e.name,e.salary],'keep');});
+    return [
+      S(sql,2,'First sort by salary, highest first.',['name','salary'],sortedRows),
+      S(sql,3,'<b>OFFSET 2</b> skips the first 2 rows (struck out) before returning anything.',['name','salary'],skip),
+      S(sql,3,'<b>LIMIT 2</b> then takes the next 2. Think: OFFSET = which page, LIMIT = page size.',['name','salary'],page),
+      S(sql,0,'Result: "page 2" of the salary ranking.',['name','salary'],fin)
+    ];
+  }};
+
+  function whereDemo(title, kw, sqlCond, pred, statusKw){
+    return {title:title,build:function(){
+      var sql=['SELECT *','FROM employees','WHERE '+sqlCond+';'];
+      var all=EMP.map(function(e){return r(full(e));});
+      var tested=EMP.map(function(e){return r(full(e), pred(e)?'keep':'drop');});
+      var kept=EMP.filter(pred).map(function(e){return r(full(e),'keep');});
+      return [
+        S(sql,1,'Begin with all rows.',FULL,all),
+        S(sql,2,statusKw,FULL,tested),
+        S(sql,0,'Matching rows remain.',FULL,kept)
+      ];
+    }};
+  }
+  demos.AND=whereDemo('AND','AND',"dept = 'Tech' AND salary >= 90",
+    function(e){return e.dept==='Tech'&&e.salary>=90;},
+    '<b>AND</b> requires <em>both</em> conditions: Tech <em>and</em> salary &ge; 90.');
+  demos.OR=whereDemo('OR','OR',"dept = 'HR' OR salary >= 90",
+    function(e){return e.dept==='HR'||e.salary>=90;},
+    '<b>OR</b> requires <em>either</em> condition: HR <em>or</em> salary &ge; 90.');
+  demos.NOT=whereDemo('NOT','NOT',"NOT dept = 'Tech'",
+    function(e){return e.dept!=='Tech';},
+    '<b>NOT</b> negates the condition: keep everyone <em>not</em> in Tech.');
+  demos.IN=whereDemo('IN','IN',"dept IN ('Sales','HR')",
+    function(e){return e.dept==='Sales'||e.dept==='HR';},
+    "<b>IN</b> matches any value in the list: dept is Sales or HR.");
+  demos.BETWEEN=whereDemo('BETWEEN','BETWEEN',"age BETWEEN 30 AND 45",
+    function(e){return e.age>=30&&e.age<=45;},
+    '<b>BETWEEN</b> is an inclusive range: age from 30 to 45.');
+  demos.LIKE=whereDemo('LIKE','LIKE',"name LIKE '%n'",
+    function(e){return /n$/.test(e.name);},
+    "<b>LIKE '%n'</b> matches text patterns: names ending in 'n'.");
+  demos.ISNULL=whereDemo('IS NULL','ISNULL',"bonus IS NULL",
+    function(e){return e.bonus===null;},
+    '<b>IS NULL</b> finds missing values &mdash; you cannot use <code>= NULL</code>.');
+
+  demos.COUNT={title:'COUNT',build:function(){
+    var sql=['SELECT COUNT(*)','FROM employees;'];
+    var all=EMP.map(function(e){return r(full(e));});
+    return [
+      S(sql,1,'All rows are the input.',FULL,all),
+      S(sql,0,'<b>COUNT(*)</b> collapses them to a single number: the row count.',['COUNT(*)'],[r([EMP.length])])
+    ];
+  }};
+
+  demos.AGG={title:'SUM / AVG / MIN / MAX',build:function(){
+    var sql=['SELECT MIN(salary), MAX(salary),','       AVG(salary), SUM(salary)','FROM employees;'];
+    var hl=EMP.map(function(e){return r(full(e),'', {3:'hl'});});
+    var sum=EMP.reduce(function(a,e){return a+e.salary;},0);
+    return [
+      S(sql,2,'Look at the <code>salary</code> column across all rows.',FULL,hl),
+      S(sql,0,'Aggregate functions reduce a column to one value each.',
+        ['MIN','MAX','AVG','SUM'],[r([50,90,(sum/EMP.length).toFixed(2),sum])])
+    ];
+  }};
+
+  demos.GROUPBY={title:'GROUP BY',build:function(){
+    var sql=['SELECT dept, COUNT(*) AS n,','       AVG(salary) AS avg_sal','FROM employees','GROUP BY dept;'];
+    var all=EMP.map(function(e){return r(full(e));});
+    var order=['Sales','Tech','HR'], gcls={Sales:'g0',Tech:'g1',HR:'g2'};
+    var clustered=[];
+    order.forEach(function(d){ EMP.filter(function(e){return e.dept===d;}).forEach(function(e){ clustered.push(r(full(e), gcls[d])); }); });
+    var grouped=[r(['Sales',2,55],'g0'),r(['Tech',3,(250/3).toFixed(2)],'g1'),r(['HR',1,55],'g2')];
+    return [
+      S(sql,2,'Input: all rows, ungrouped.',FULL,all),
+      S(sql,3,'<b>GROUP BY dept</b> &mdash; rows are first reorganized into groups. Each colour band is one group (Sales, Tech, HR).',FULL,clustered),
+      S(sql,0,'Each group then collapses into a single row, and the aggregates are computed per group.',['dept','n','avg_sal'],grouped)
+    ];
+  }};
+
+  demos.HAVING={title:'HAVING',build:function(){
+    var sql=['SELECT dept, COUNT(*) AS n','FROM employees','GROUP BY dept','HAVING COUNT(*) > 1;'];
+    var all=EMP.map(function(e){return r(full(e));});
+    var order=['Sales','Tech','HR'], gcls={Sales:'g0',Tech:'g1',HR:'g2'};
+    var clustered=[];
+    order.forEach(function(d){ EMP.filter(function(e){return e.dept===d;}).forEach(function(e){ clustered.push(r(full(e), gcls[d])); }); });
+    var grouped=[r(['Sales',2],'g0'),r(['Tech',3],'g1'),r(['HR',1],'g2')];
+    var tested=[r(['Sales',2],'keep'),r(['Tech',3],'keep'),r(['HR',1],'drop')];
+    var kept=[r(['Sales',2],'keep'),r(['Tech',3],'keep')];
+    return [
+      S(sql,1,'Input: all rows.',FULL,all),
+      S(sql,2,'<b>GROUP BY dept</b> forms the groups first (each colour band is one group).',FULL,clustered),
+      S(sql,2,'Each group collapses to one row with its <code>COUNT(*)</code>.',['dept','n'],grouped),
+      S(sql,3,'<b>HAVING</b> filters the <em>groups</em> after aggregation: keep <code>COUNT(*) &gt; 1</code>.',['dept','n'],tested),
+      S(sql,0,'HR (only 1 member) is removed. (WHERE filters rows; HAVING filters groups.)',['dept','n'],kept)
+    ];
+  }};
+
+  demos.WROWNUM={title:'ROW_NUMBER',build:function(){
+    var sql=['SELECT name, salary,','  ROW_NUMBER() OVER (ORDER BY salary DESC)','    AS rn','FROM employees;'];
+    var base=EMP.map(function(e){return r([e.name,e.salary]);});
+    var sorted=EMP.slice().sort(function(a,b){return b.salary-a.salary;});
+    var sortedRows=sorted.map(function(e){return r([e.name,e.salary]);});
+    var withRn=sorted.map(function(e,i){return r([e.name,e.salary,i+1],'',{2:'changed'});});
+    return [
+      S(sql,1,'A <b>window function</b> computes a value across a set of rows <em>without collapsing them</em> (unlike GROUP BY).',['name','salary'],base),
+      S(sql,1,'The <code>OVER (ORDER BY salary DESC)</code> clause orders the rows for the window.',['name','salary'],sortedRows),
+      S(sql,1,'<b>ROW_NUMBER()</b> assigns a unique sequential number in that order &mdash; ties still get distinct numbers.',['name','salary','rn'],withRn)
+    ];
+  }};
+
+  demos.WRANK={title:'RANK / DENSE_RANK',build:function(){
+    var sql=['SELECT name, salary,','  RANK()       OVER (ORDER BY salary DESC) AS rnk,','  DENSE_RANK() OVER (ORDER BY salary DESC) AS dense','FROM employees;'];
+    var sorted=EMP.slice().sort(function(a,b){return b.salary-a.salary;});
+    var sortedRows=sorted.map(function(e){return r([e.name,e.salary]);});
+    var rnk=[], dense=[], prev=null, rVal=0, dVal=0;
+    sorted.forEach(function(e,i){ if(e.salary!==prev){ rVal=i+1; dVal=dVal+1; prev=e.salary; } rnk.push(rVal); dense.push(dVal); });
+    var withRnk=sorted.map(function(e,i){return r([e.name,e.salary,rnk[i]],'',{2:'changed'});});
+    var withBoth=sorted.map(function(e,i){return r([e.name,e.salary,rnk[i],dense[i]],'',{2:'changed',3:'changed'});});
+    return [
+      S(sql,1,'Rows ordered by salary descending &mdash; Cara and Dan tie at 90.',['name','salary'],sortedRows),
+      S(sql,1,'<b>RANK()</b> gives tied rows the same rank, then <em>skips</em>: note 1, 1, 3 (no 2).',['name','salary','rnk'],withRnk),
+      S(sql,2,'<b>DENSE_RANK()</b> also ties, but does <em>not</em> skip: 1, 1, 2, ...',['name','salary','rnk','dense'],withBoth)
+    ];
+  }};
+
+  demos.WPART={title:'PARTITION BY',build:function(){
+    var sql=['SELECT name, dept, salary,','  RANK() OVER (','    PARTITION BY dept','    ORDER BY salary DESC) AS dept_rank','FROM employees;'];
+    var cols=['name','dept','salary'];
+    var all=EMP.map(function(e){return r([e.name,e.dept,e.salary]);});
+    var order=['Sales','Tech','HR'], gcls={Sales:'g0',Tech:'g1',HR:'g2'};
+    var clustered=[], ranked=[];
+    order.forEach(function(d){
+      var grp=EMP.filter(function(e){return e.dept===d;}).sort(function(a,b){return b.salary-a.salary;});
+      var prev=null, val=0;
+      grp.forEach(function(e,i){
+        clustered.push(r([e.name,e.dept,e.salary], gcls[d]));
+        if(e.salary!==prev){ val=i+1; prev=e.salary; }
+        ranked.push(r([e.name,e.dept,e.salary,val], gcls[d], {3:'changed'}));
+      });
+    });
+    return [
+      S(sql,0,'Input: all rows.',cols,all),
+      S(sql,2,'<b>PARTITION BY dept</b> splits rows into independent windows (colour bands) &mdash; like GROUP BY, but the rows are kept.',cols,clustered),
+      S(sql,3,'<b>RANK()</b> is computed <em>within each partition</em>: the ranking restarts at 1 for every department.',['name','dept','salary','dept_rank'],ranked)
+    ];
+  }};
+
+  demos.WRUNSUM={title:'Running SUM (OVER)',build:function(){
+    var sql=['SELECT name, salary,','  SUM(salary) OVER (ORDER BY id)','    AS running_total','FROM employees;'];
+    var base=EMP.map(function(e){return r([e.name,e.salary]);});
+    var run=0;
+    var withRun=EMP.map(function(e){ run+=e.salary; return r([e.name,e.salary,run],'',{2:'changed'}); });
+    return [
+      S(sql,1,'Rows in <code>id</code> order. An aggregate with <code>OVER</code> keeps every row (no collapsing).',['name','salary'],base),
+      S(sql,1,'<b>SUM(salary) OVER (ORDER BY id)</b> builds a <b>running total</b>: each row = its own salary plus all prior rows.',['name','salary','running_total'],withRun)
+    ];
+  }};
+
+  demos.CASE={title:'CASE',build:function(){
+    var sql=['SELECT name, salary,',"       CASE WHEN salary >= 70 THEN 'High'",'            ELSE \'Low\' END AS band','FROM employees;'];
+    var base=EMP.map(function(e){return r([e.name,e.salary]);});
+    var withBand=EMP.map(function(e){return r([e.name,e.salary, e.salary>=70?'High':'Low'],'', {2:'changed'});});
+    return [
+      S(sql,0,'Start with name and salary.',['name','salary'],base),
+      S(sql,1,'<b>CASE</b> builds a new column by testing each row: salary &ge; 70 &rarr; High, else Low.',['name','salary','band'],withBand)
+    ];
+  }};
+
+  demos.AS={title:'AS (alias)',build:function(){
+    var sql=['SELECT name AS employee,','       salary AS pay','FROM employees;'];
+    var rows=EMP.map(function(e){return r([e.name,e.salary]);});
+    return [
+      S(sql,0,'Original column names: <code>name</code>, <code>salary</code>.',['name','salary'],rows),
+      S(sql,1,'<b>AS</b> renames columns (or tables) in the output only.',
+        [{h:'employee',cls:'addcol'},{h:'pay',cls:'addcol'}],rows)
+    ];
+  }};
+
+  demos.WITH={title:'WITH (CTE)',build:function(){
+    var sql=['WITH dept_avg AS (','  SELECT dept, AVG(salary) AS a','  FROM employees GROUP BY dept',')','SELECT * FROM dept_avg','WHERE a > 60;'];
+    var cte=[r(['Sales',55]),r(['Tech',(250/3).toFixed(2)]),r(['HR',55])];
+    var tested=[r(['Sales',55],'drop'),r(['Tech',(250/3).toFixed(2)],'keep'),r(['HR',55],'drop')];
+    var fin=[r(['Tech',(250/3).toFixed(2)],'keep')];
+    return [
+      S(sql,1,'A <b>CTE</b> (<code>WITH</code>) is a named temporary result. Here it computes avg salary per dept.',['dept','a'],cte),
+      S(sql,5,'The main query then reads that CTE and applies <code>WHERE a &gt; 60</code>.',['dept','a'],tested),
+      S(sql,4,'Final result: only departments with avg salary above 60.',['dept','a'],fin)
+    ];
+  }};
+
+  demos.SUBSCALAR={title:'Scalar subquery',build:function(){
+    var sql=['SELECT name, salary','FROM employees','WHERE salary > (','  SELECT AVG(salary) FROM employees',');'];
+    var sum=EMP.reduce(function(a,e){return a+e.salary;},0);
+    var avg=sum/EMP.length, avgR=avg.toFixed(2);
+    var inner=EMP.map(function(e){return r(full(e),'',{3:'hl'});});
+    var tested=EMP.map(function(e){return r([e.name,e.salary], e.salary>avg?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.salary>avg;}).map(function(e){return r([e.name,e.salary],'keep');});
+    return [
+      S(sql,3,'A <b>subquery</b> is a query inside a query. The <b>inner</b> one runs first: average salary across all employees.',FULL,inner),
+      S(sql,3,'It returns a single value: <code>'+avgR+'</code>.',['AVG(salary)'],[r([avgR],'keep')]),
+      S(sql,2,'The <b>outer</b> query plugs that value in: <code>WHERE salary &gt; '+avgR+'</code>.',['name','salary'],tested),
+      S(sql,0,'Result: employees earning above the company average.',['name','salary'],kept)
+    ];
+  }};
+
+  demos.SUBIN={title:'Subquery + IN',build:function(){
+    var sql=['SELECT name, dept','FROM employees','WHERE dept IN (','  SELECT dept FROM employees','  WHERE salary >= 90',');'];
+    var inner=EMP.map(function(e){return r(full(e), e.salary>=90?'hl':'');});
+    var innerRes=[r(['Tech'],'keep')];
+    var tested=EMP.map(function(e){return r([e.name,e.dept], e.dept==='Tech'?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.dept==='Tech';}).map(function(e){return r([e.name,e.dept],'keep');});
+    return [
+      S(sql,4,'The <b>inner subquery</b> runs first: which departments have someone earning &ge; 90? (highlighted rows)',FULL,inner),
+      S(sql,3,'It returns a set of departments: <code>{Tech}</code> (duplicates removed).',['dept'],innerRes),
+      S(sql,2,'The <b>outer</b> query uses <code>IN</code> against that set: keep employees whose dept is in it.',['name','dept'],tested),
+      S(sql,0,'Result: everyone in a high-earning department.',['name','dept'],kept)
+    ];
+  }};
+
+  demos.SUBCORR={title:'Correlated subquery',build:function(){
+    var sql=['SELECT name, dept, salary','FROM employees e','WHERE salary > (','  SELECT AVG(salary) FROM employees x','  WHERE x.dept = e.dept',');'];
+    var davgN={Sales:55,Tech:250/3,HR:55}, davg={Sales:'55.00',Tech:(250/3).toFixed(2),HR:'55.00'};
+    var cols=['name','dept','salary'];
+    function snap(n){ return EMP.map(function(e,k){ return r([e.name,e.dept,e.salary], k<n?((e.salary>davgN[e.dept])?'keep':'drop'):''); }); }
+    var steps=[ S(sql,4,'<b>Correlated subquery</b>: the inner query references the outer row (<code>e.dept</code>), so it re-runs once per row.',cols,snap(0)) ];
+    EMP.forEach(function(e,k){
+      var pass=e.salary>davgN[e.dept];
+      steps.push(S(sql,4,'Row <b>'+e.name+'</b> ('+e.dept+'): its dept average is <code>'+davg[e.dept]+'</code>. Is '+e.salary+' &gt; '+davg[e.dept]+'? '+(pass?'<b style="color:#1a7f4b">yes &#10003;</b>':'<b style="color:#c0392b">no</b>'),cols,snap(k+1)));
+    });
+    steps.push(S(sql,0,'Result: employees earning above <em>their own</em> department average.',cols,EMP.filter(function(e){return e.salary>davgN[e.dept];}).map(function(e){return r([e.name,e.dept,e.salary],'keep');})));
+    return steps;
+  }};
+
+  demos.SUBEXISTS={title:'EXISTS',build:function(){
+    var sql=['SELECT DISTINCT dept','FROM employees e','WHERE EXISTS (','  SELECT 1 FROM employees x','  WHERE x.dept = e.dept','    AND x.bonus IS NULL',');'];
+    var nulls=EMP.map(function(e){return r(full(e), e.bonus===null?'hl':'');});
+    return [
+      S(sql,2,'<b>EXISTS</b> returns true/false &mdash; does a matching row exist? Highlighted: employees with a NULL bonus.',FULL,nulls),
+      S(sql,2,'For each dept, does at least one employee have a NULL bonus? Sales (Ben) and Tech (Dan) do; HR does not.',['dept'],[r(['Sales'],'keep'),r(['Tech'],'keep'),r(['HR'],'drop')]),
+      S(sql,0,'Result: departments where such an employee exists.',['dept'],[r(['Sales'],'keep'),r(['Tech'],'keep')])
+    ];
+  }};
+
+  demos.SUBFROM={title:'Subquery in FROM',build:function(){
+    var sql=['SELECT dept, avg_sal','FROM (','  SELECT dept, AVG(salary) AS avg_sal','  FROM employees GROUP BY dept',') t','WHERE avg_sal > 60;'];
+    var inner=[r(['Sales','55.00']),r(['Tech',(250/3).toFixed(2)]),r(['HR','55.00'])];
+    var tested=[r(['Sales','55.00'],'drop'),r(['Tech',(250/3).toFixed(2)],'keep'),r(['HR','55.00'],'drop')];
+    var fin=[r(['Tech',(250/3).toFixed(2)],'keep')];
+    return [
+      S(sql,2,'A subquery in <b>FROM</b> acts as a temporary "derived table". It runs first, producing avg salary per dept.',['dept','avg_sal'],inner),
+      S(sql,5,'The outer query then selects from that derived table: <code>WHERE avg_sal &gt; 60</code>.',['dept','avg_sal'],tested),
+      S(sql,0,'Result: departments whose average salary exceeds 60.',['dept','avg_sal'],fin)
+    ];
+  }};
+
+  demos.SUBSELECT={title:'Subquery in SELECT',build:function(){
+    var sql=['SELECT name, salary,','  (SELECT AVG(salary) FROM employees)','    AS company_avg','FROM employees;'];
+    var avg=(EMP.reduce(function(a,e){return a+e.salary;},0)/EMP.length).toFixed(2);
+    var base=EMP.map(function(e){return r([e.name,e.salary]);});
+    var withCol=EMP.map(function(e){return r([e.name,e.salary,avg],'',{2:'changed'});});
+    return [
+      S(sql,0,'Start with name and salary.',['name','salary'],base),
+      S(sql,1,'A scalar subquery in <b>SELECT</b> computes one value: the company-wide average = <code>'+avg+'</code>.',['AVG(salary)'],[r([avg],'keep')]),
+      S(sql,1,'That value is attached to every output row as <code>company_avg</code>.',['name','salary','company_avg'],withCol)
+    ];
+  }};
+
+  demos.SUBANY={title:'ANY',build:function(){
+    var sql=['SELECT name, salary','FROM employees',"WHERE salary > ANY (",'  SELECT salary FROM employees',"  WHERE dept = 'Sales'",');'];
+    var innerHi=EMP.map(function(e){return r(full(e), e.dept==='Sales'?'hl':'');});
+    var tested=EMP.map(function(e){return r([e.name,e.salary], e.salary>50?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.salary>50;}).map(function(e){return r([e.name,e.salary],'keep');});
+    return [
+      S(sql,4,'The subquery returns the Sales salaries (highlighted): {50, 60}.',FULL,innerHi),
+      S(sql,3,'<b>&gt; ANY</b> means "greater than at least one of them" &mdash; i.e. greater than the smallest (50).',['salary'],[r([50]),r([60])]),
+      S(sql,2,'Test each employee: salary &gt; 50?',['name','salary'],tested),
+      S(sql,0,'Result: anyone earning more than the lowest Sales salary.',['name','salary'],kept)
+    ];
+  }};
+
+  demos.SUBALL={title:'ALL',build:function(){
+    var sql=['SELECT name, salary','FROM employees',"WHERE salary > ALL (",'  SELECT salary FROM employees',"  WHERE dept = 'Sales'",');'];
+    var innerHi=EMP.map(function(e){return r(full(e), e.dept==='Sales'?'hl':'');});
+    var tested=EMP.map(function(e){return r([e.name,e.salary], e.salary>60?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.salary>60;}).map(function(e){return r([e.name,e.salary],'keep');});
+    return [
+      S(sql,4,'The subquery returns the Sales salaries (highlighted): {50, 60}.',FULL,innerHi),
+      S(sql,3,'<b>&gt; ALL</b> means "greater than every one of them" &mdash; i.e. greater than the largest (60).',['salary'],[r([50]),r([60])]),
+      S(sql,2,'Test each employee: salary &gt; 60?',['name','salary'],tested),
+      S(sql,0,'Result: anyone earning more than the highest Sales salary.',['name','salary'],kept)
+    ];
+  }};
+
+  demos.SUBROW={title:'Multi-column IN',build:function(){
+    var sql=['SELECT name, dept, salary','FROM employees','WHERE (dept, salary) IN (','  SELECT dept, MAX(salary)','  FROM employees GROUP BY dept',');'];
+    var mx={Sales:60,Tech:90,HR:55};
+    var inner=[r(['Sales',60]),r(['Tech',90]),r(['HR',55])];
+    var tested=EMP.map(function(e){return r([e.name,e.dept,e.salary], e.salary===mx[e.dept]?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.salary===mx[e.dept];}).map(function(e){return r([e.name,e.dept,e.salary],'keep');});
+    return [
+      S(sql,3,'A subquery can return <b>multiple columns</b>: here, the top salary per dept.',['dept','MAX(salary)'],inner),
+      S(sql,2,'The outer query matches the <em>pair</em> <code>(dept, salary)</code> against that set &mdash; the "greatest-per-group" idiom.',['name','dept','salary'],tested),
+      S(sql,0,'Result: the highest earner in each department.',['name','dept','salary'],kept)
+    ];
+  }};
+
+  demos.SUBNOTIN={title:'NOT IN (NULL trap)',build:function(){
+    var sql=['SELECT name, dept','FROM employees','WHERE dept NOT IN (','  SELECT dept FROM employees','  WHERE salary >= 90',');'];
+    var sql2=['-- if the inner list contains a NULL:','SELECT name, dept','FROM employees',"WHERE dept NOT IN ('Tech', NULL);"];
+    var innerHi=EMP.map(function(e){return r(full(e), e.salary>=90?'hl':'');});
+    var tested=EMP.map(function(e){return r([e.name,e.dept], e.dept!=='Tech'?'keep':'drop');});
+    var kept=EMP.filter(function(e){return e.dept!=='Tech';}).map(function(e){return r([e.name,e.dept],'keep');});
+    return [
+      S(sql,4,'Inner subquery: depts with salary &ge; 90 &rarr; {Tech} (highlighted).',FULL,innerHi),
+      S(sql,2,'<b>NOT IN</b>: keep employees whose dept is not in {Tech}.',['name','dept'],tested),
+      S(sql,0,'Result: everyone outside Tech.',['name','dept'],kept),
+      S(sql2,3,'<b>The NULL trap &#9888;</b> If the subquery list contains a <code>NULL</code>, <code>NOT IN</code> returns <em>zero</em> rows &mdash; comparing to NULL is "unknown", so the condition can never be true. (Empty result below.)',['name','dept'],[])
+    ];
+  }};
+
+  demos.SUBDML={title:'DELETE + subquery',build:function(){
+    var sql=['DELETE FROM employees','WHERE salary < (','  SELECT AVG(salary) FROM employees',');'];
+    var avg=(EMP.reduce(function(a,e){return a+e.salary;},0)/EMP.length), avgR=avg.toFixed(2);
+    var inner=EMP.map(function(e){return r(full(e),'',{3:'hl'});});
+    var marked=EMP.map(function(e){return r(full(e), e.salary<avg?'drop':'');});
+    var after=EMP.filter(function(e){return !(e.salary<avg);}).map(function(e){return r(full(e));});
+    return [
+      S(sql,2,'Subqueries work in <b>DELETE</b> and <b>UPDATE</b> too. The inner query computes the average salary = <code>'+avgR+'</code>.',FULL,inner),
+      S(sql,1,'<b>DELETE ... WHERE salary &lt; '+avgR+'</b> targets the below-average rows (marked for removal).',FULL,marked),
+      S(sql,0,'After the delete, only the above-average employees remain.',FULL,after)
+    ];
+  }};
+
+  function setDemo(title, op, sqlMid, resultRows, note){
+    return {title:title,build:function(){
+      var sql=['SELECT name FROM list_2023', op, 'SELECT name FROM list_2024;'];
+      var A=[r(['Ava']),r(['Ben']),r(['Cara'])];
+      var B=[r(['Ben']),r(['Cara']),r(['Dan'])];
+      return [
+        S(sql,0,'Left query &mdash; the 2023 list.',['name'],A),
+        S(sql,2,'Right query &mdash; the 2024 list.',['name'],B),
+        S(sql,1,note,['name'],resultRows)
+      ];
+    }};
+  }
+  demos.UNION=setDemo('UNION','UNION',null,
+    [r(['Ava'],'keep'),r(['Ben'],'keep'),r(['Cara'],'keep'),r(['Dan'],'keep')],
+    '<b>UNION</b> stacks both results and removes duplicates.');
+  demos.UNIONALL=setDemo('UNION ALL','UNION ALL',null,
+    [r(['Ava'],'keep'),r(['Ben'],'keep'),r(['Cara'],'keep'),r(['Ben'],'add'),r(['Cara'],'add'),r(['Dan'],'keep')],
+    '<b>UNION ALL</b> stacks both and keeps duplicates (the blue rows repeat).');
+  demos.INTERSECT=setDemo('INTERSECT','INTERSECT',null,
+    [r(['Ben'],'keep'),r(['Cara'],'keep')],
+    '<b>INTERSECT</b> keeps only rows present in <em>both</em> lists.');
+  demos.EXCEPT=setDemo('EXCEPT','EXCEPT',null,
+    [r(['Ava'],'keep')],
+    '<b>EXCEPT</b> keeps rows in the first list but <em>not</em> the second.');
+
+  demos.INSERT={title:'INSERT',build:function(){
+    var sql=['INSERT INTO employees',"  (id,name,dept,salary,age,bonus)","VALUES (7,'Gia','Sales',65,33,4);"];
+    var all=EMP.map(function(e){return r(full(e));});
+    var added=all.concat([r([7,'Gia','Sales',65,33,4],'add')]);
+    return [
+      S(sql,1,'The table before the insert.',FULL,all),
+      S(sql,2,'<b>INSERT</b> adds a brand new row (highlighted).',FULL,added)
+    ];
+  }};
+
+  demos.UPDATE={title:'UPDATE',build:function(){
+    var sql=['UPDATE employees',"SET salary = 80","WHERE name = 'Ava';"];
+    var marked=EMP.map(function(e){return r(full(e), e.name==='Ava'?'hl':'');});
+    var changed=EMP.map(function(e){
+      if(e.name==='Ava') return r([e.id,e.name,e.dept,80,e.age,e.bonus],'changed',{3:'changed'});
+      return r(full(e));
+    });
+    return [
+      S(sql,2,'<b>WHERE</b> picks which rows to change: Ava.',FULL,marked),
+      S(sql,1,'<b>UPDATE ... SET</b> changes the chosen cells (salary 50 &rarr; 80).',FULL,changed)
+    ];
+  }};
+
+  demos.DELETE={title:'DELETE',build:function(){
+    var sql=['DELETE FROM employees',"WHERE dept = 'HR';"];
+    var marked=EMP.map(function(e){return r(full(e), e.dept==='HR'?'drop':'');});
+    var after=EMP.filter(function(e){return e.dept!=='HR';}).map(function(e){return r(full(e));});
+    return [
+      S(sql,1,'<b>WHERE</b> selects the rows to remove: dept = HR (Eve).',FULL,marked),
+      S(sql,0,'<b>DELETE</b> removes them. The rest of the table stays.',FULL,after)
+    ];
+  }};
+
+  demos.CREATE={title:'CREATE TABLE',build:function(){
+    var sql=['CREATE TABLE projects (','  id INT,','  title TEXT',');'];
+    return [
+      S(sql,0,'<b>CREATE TABLE</b> defines a new, empty table and its columns &mdash; no rows yet.',
+        [{h:'id',cls:'addcol'},{h:'title',cls:'addcol'}],[])
+    ];
+  }};
+
+  demos.ALTER={title:'ALTER TABLE',build:function(){
+    var sql=['ALTER TABLE projects','ADD COLUMN owner TEXT;'];
+    return [
+      S(sql,0,'The <code>projects</code> table before the change.',['id','title'],[r([1,'Apollo'])]),
+      S(sql,1,'<b>ALTER TABLE ... ADD COLUMN</b> adds a column; existing rows get <code>NULL</code> for it.',
+        ['id','title',{h:'owner',cls:'addcol'}],[r([1,'Apollo',null],'',{2:'changed'})])
+    ];
+  }};
+
+  demos.DROP={title:'DROP TABLE',build:function(){
+    var sql=['DROP TABLE projects;'];
+    return [
+      S(sql,0,'The <code>projects</code> table exists.',['id','title'],[r([1,'Apollo'])]),
+      S(sql,0,'<b>DROP TABLE</b> removes the table and all its data entirely.',[],[])
+    ];
+  }};
+
+  // ---------- rendering ----------
+  var KW=/\b(SELECT|DISTINCT|FROM|WHERE|AND|OR|NOT|IN|BETWEEN|LIKE|IS|NULL|ORDER|BY|LIMIT|OFFSET|GROUP|HAVING|COUNT|SUM|AVG|MIN|MAX|AS|CASE|WHEN|THEN|ELSE|END|WITH|UNION|ALL|INTERSECT|EXCEPT|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|ADD|COLUMN|DROP|INT|TEXT|ASC|DESC)\b/gi;
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function hlSQL(line){ return esc(line).replace(KW,'<span class="kw">$1</span>'); }
+
+  var sqlBox=document.getElementById('sqlBox');
+  var statusEl=document.getElementById('demoStatus');
+  var head=document.querySelector('#workTable thead');
+  var bodyEl=document.querySelector('#workTable tbody');
+  var emptyMsg=document.getElementById('emptyMsg');
+  var workTable=document.getElementById('workTable');
+
+  function setSQL(lines, active){
+    sqlBox.innerHTML=lines.map(function(l,i){
+      return '<div class="sqlline'+(i===active?' active':'')+'">'+hlSQL(l)+'</div>';
+    }).join('');
+  }
+  function setStatus(html){
+    statusEl.innerHTML=html;
+    statusEl.classList.remove('flash'); void statusEl.offsetWidth; statusEl.classList.add('flash');
+  }
+  function draw(cols, rows){
+    if((!cols||cols.length===0)&&(!rows||rows.length===0)){
+      workTable.style.display='none'; emptyMsg.style.display='block';
+      emptyMsg.textContent='(no table)'; return;
+    }
+    workTable.style.display=''; emptyMsg.style.display='none';
+    head.innerHTML='<tr>'+cols.map(function(c){
+      var o=(typeof c==='string')?{h:c}:c;
+      return '<th'+(o.cls?' class="'+o.cls+'"':'')+'>'+esc(o.h)+'</th>';
+    }).join('')+'</tr>';
+    bodyEl.innerHTML=rows.map(function(row){
+      var tds=row.c.map(function(v,i){
+        var cls=(row.cell&&row.cell[i])?row.cell[i]:'';
+        if(v===null) return '<td class="nullcell'+(cls?' '+cls:'')+'">NULL</td>';
+        return '<td'+(cls?' class="'+cls+'"':'')+'>'+esc(v)+'</td>';
+      }).join('');
+      return '<tr'+(row.cls?' class="'+row.cls+'"':'')+'>'+tds+'</tr>';
+    }).join('');
+  }
+  function clearWork(){ head.innerHTML=''; bodyEl.innerHTML=''; workTable.style.display=''; emptyMsg.style.display='none'; }
+  function applyStep(s){ setSQL(s.sql,s.active); setStatus(s.status); draw(s.cols,s.rows); }
+
+  // ---------- playback engine ----------
+  var steps=[], idx=0, playing=false, timer=null, speed=600;
+  var playPauseBtn=document.getElementById('playPauseBtn');
+  var stepBackBtn=document.getElementById('stepBackBtn');
+  var stepBtn=document.getElementById('stepBtn');
+  var resetBtn=document.getElementById('resetBtn');
+  var progressEl=document.getElementById('stepProgress');
+  var slider=document.getElementById('speedSlider');
+
+  function speedFromSlider(){ return 1100 - slider.value*100; }
+  function cancelTimer(){ if(timer){ clearTimeout(timer); timer=null; } }
+
+  function updateButtons(){
+    var has=steps.length>0, done=has&&idx>=steps.length;
+    playPauseBtn.disabled=!has;
+    playPauseBtn.innerHTML = !has ? '&#9658; Play'
+      : done ? '&#8635; Replay'
+      : playing ? '&#10073;&#10073; Pause'
+      : (idx===0 ? '&#9658; Play' : '&#9658; Resume');
+    stepBtn.disabled=!has||done;
+    stepBackBtn.disabled=!has||idx===0;
+    progressEl.textContent= has ? ('step '+idx+' / '+steps.length) : '';
+  }
+  function tick(){
+    if(idx>=steps.length){ playing=false; updateButtons(); return; }
+    applyStep(steps[idx]); idx++;
+    updateButtons();
+    if(playing && idx<steps.length){ timer=setTimeout(tick, speed); }
+    else { playing=false; updateButtons(); }
+  }
+  function play(){ if(steps.length===0||idx>=steps.length||playing) return; playing=true; cancelTimer(); updateButtons(); tick(); }
+  function pause(){ playing=false; cancelTimer(); updateButtons(); }
+  function stepOnce(){ if(steps.length===0||idx>=steps.length) return; playing=false; cancelTimer(); applyStep(steps[idx]); idx++; updateButtons(); }
+  function stepBack(){
+    if(steps.length===0||idx===0) return;
+    playing=false; cancelTimer(); idx--;
+    if(idx>0) applyStep(steps[idx-1]); else clearWork();
+    updateButtons();
+  }
+  function replay(){ cancelTimer(); idx=0; clearWork(); playing=true; updateButtons(); tick(); }
+
+  function loadDemo(key, autoplay){
+    cancelTimer(); playing=false; steps=demos[key].build(); idx=0;
+    document.querySelectorAll('#groups button').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-demo')===key);
+    });
+    setSQL(steps[0].sql,-1); clearWork();
+    setStatus('<b>'+demos[key].title+'</b> loaded. Press <b>Step &#8594;</b> to walk through it, or <b>Play</b> to auto-run.');
+    updateButtons();
+    if(autoplay) play();
+  }
+  function reset(){
+    cancelTimer(); playing=false; steps=[]; idx=0;
+    document.querySelectorAll('#groups button').forEach(function(b){ b.classList.remove('active'); });
+    sqlBox.innerHTML='<div class="sqlline">-- choose a keyword above</div>';
+    clearWork(); setStatus('Pick any keyword to load its animated demo.'); updateButtons();
+  }
+
+  document.querySelectorAll('#groups button').forEach(function(b){
+    b.addEventListener('click', function(){ loadDemo(b.getAttribute('data-demo'), false); });
+  });
+  playPauseBtn.addEventListener('click', function(){
+    if(steps.length===0) return;
+    if(idx>=steps.length){ replay(); } else if(playing){ pause(); } else { play(); }
+  });
+  stepBtn.addEventListener('click', stepOnce);
+  stepBackBtn.addEventListener('click', stepBack);
+  resetBtn.addEventListener('click', reset);
+  slider.addEventListener('input', function(){ speed=speedFromSlider(); });
+  speed=speedFromSlider();
+  updateButtons();
+})();
+</script>
+</body>
+</html>
