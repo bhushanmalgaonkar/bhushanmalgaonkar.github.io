@@ -20,7 +20,7 @@
     font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:920px; margin:0 auto; padding:32px 24px 96px}
+  .wrap{max-width:none; margin:0; padding:32px 40px 96px}
   header.page{border-bottom:3px solid var(--accent); padding-bottom:20px; margin-bottom:8px}
   header.page h1{font-size:2.1rem; margin:0 0 6px; letter-spacing:-.02em}
   header.page p.sub{color:var(--muted); margin:0; font-size:1.05rem}
@@ -121,9 +121,9 @@
     <h2>What's inside</h2>
     <ol>
       <li><a href="#refresher">Quick refresher: the join family</a> &middot; <a href="#demo">interactive demo</a></li>
+      <li><a href="#amazon">Case study: what a large codebase actually does</a></li>
       <li><a href="#best">Industry best practices</a></li>
       <li><a href="#left-right">The big one: LEFT vs RIGHT</a></li>
-      <li><a href="#amazon">Case study: what a large codebase actually does</a></li>
       <li><a href="#takeaways">Key takeaways</a></li>
     </ol>
   </nav>
@@ -431,98 +431,12 @@
   </script>
 
   <!-- ============================================================ -->
-  <h2 class="section" id="best">2. Industry best practices</h2>
-  <p class="key">These are the conventions you'll find echoed across widely-used SQL style guides (e.g. Holywell's <em>SQL Style Guide</em>, Mozilla's data-engineering guidelines, the dbt and GitLab analytics handbooks) and in most production teams.</p>
-
-  <h3>2.1 Prefer explicit <code>JOIN ... ON</code> over comma joins</h3>
-  <div class="callout good">
-    <span class="tag">Do</span>
-<pre style="margin:6px 0 0"><code><span class="kw">SELECT</span> c.name, o.amount
-<span class="kw">FROM</span> customers c
-<span class="kw">JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
-  </div>
-  <div class="callout bad">
-    <span class="tag">Avoid</span>
-<pre style="margin:6px 0 0"><code><span class="cm">-- old-style implicit join: easy to forget the filter and get a cross product</span>
-<span class="kw">SELECT</span> c.name, o.amount
-<span class="kw">FROM</span> customers c, orders o
-<span class="kw">WHERE</span> o.customer_id = c.customer_id;</code></pre>
-  </div>
-
-  <h3>2.2 Standardize on LEFT JOIN; avoid RIGHT JOIN</h3>
-  <p>This is the single most common team-level convention. Reading a query top-to-bottom, the first table in <code>FROM</code> is your "anchor," and every <code>LEFT JOIN</code> adds optional detail to it. RIGHT JOIN forces the reader to mentally flip that direction. Since any RIGHT JOIN can be rewritten as a LEFT JOIN (see &sect;3), most style guides simply ban it.</p>
-
-  <h3>2.3 Always qualify columns with table aliases</h3>
-  <p>Use short, meaningful aliases and prefix every column. It prevents ambiguity and survives future schema changes.</p>
-<pre><code><span class="cm">-- good: short aliases, every column qualified</span>
-<span class="kw">SELECT</span> c.name, o.order_id, o.amount
-<span class="kw">FROM</span> customers c
-<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
-
-  <h3>2.4 Put join logic in <code>ON</code>, filtering in <code>WHERE</code> &mdash; carefully</h3>
-  <div class="callout warn">
-    <span class="tag">Classic trap</span>
-    <p>Putting a condition on the <em>right</em> table of a LEFT JOIN into the <code>WHERE</code> clause silently turns it into an INNER JOIN, because <code>NULL</code> rows fail the filter.</p>
-<pre style="margin:8px 0 0"><code><span class="cm">-- BUG: this drops customers with no orders -- acts like INNER JOIN</span>
-<span class="kw">FROM</span> customers c
-<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id
-<span class="kw">WHERE</span> o.amount &gt; 100;
-
-<span class="cm">-- FIX: move the condition into the ON clause to preserve the outer side</span>
-<span class="kw">FROM</span> customers c
-<span class="kw">LEFT JOIN</span> orders o
-  <span class="kw">ON</span> o.customer_id = c.customer_id
-  <span class="kw">AND</span> o.amount &gt; 100;</code></pre>
-  </div>
-
-  <h3>2.5 Beware row multiplication ("fan-out")</h3>
-  <p>If the right table has multiple matches per key, your row count multiplies and any <code>SUM()</code> double-counts. Aggregate the detail table first (in a CTE) before joining, or be deliberate about the grain.</p>
-<pre><code><span class="cm">-- aggregate first, then join one-row-per-customer</span>
-<span class="kw">WITH</span> order_totals <span class="kw">AS</span> (
-  <span class="kw">SELECT</span> customer_id, <span class="kw">SUM</span>(amount) <span class="kw">AS</span> total
-  <span class="kw">FROM</span> orders
-  <span class="kw">GROUP BY</span> customer_id
-)
-<span class="kw">SELECT</span> c.name, t.total
-<span class="kw">FROM</span> customers c
-<span class="kw">LEFT JOIN</span> order_totals t <span class="kw">ON</span> t.customer_id = c.customer_id;</code></pre>
-
-  <h3>2.6 Other habits worth keeping</h3>
-  <ul>
-    <li><strong>Join on indexed / typed keys.</strong> Joining on mismatched types or wrapping keys in functions (e.g. <code>LOWER(a)=LOWER(b)</code>) can disable index use. If you must normalize, do it once upstream.</li>
-    <li><strong>Use <code>COALESCE</code></strong> to give outer-join <code>NULL</code>s a sensible default (<code>COALESCE(t.total, 0)</code>).</li>
-    <li><strong>Filter early.</strong> Reduce each side (date ranges, partitions) before joining large tables.</li>
-    <li><strong>Comment the intent</strong> of an outer join: "left join so customers with no orders are still listed."</li>
-  </ul>
-
-  <!-- ============================================================ -->
-  <h2 class="section" id="left-right">3. The big one: LEFT vs RIGHT</h2>
-
-  <div class="callout tip">
-    <span class="tag">The one fact to memorize</span>
-    <p><strong>Every RIGHT JOIN can be rewritten as a LEFT JOIN by swapping the order of the two tables.</strong> The result set is identical. RIGHT JOIN is pure syntactic sugar &mdash; there is no query that <em>requires</em> it.</p>
-  </div>
-
-  <p>These two queries are exactly equivalent:</p>
-<pre><code><span class="cm">-- RIGHT JOIN: keep all rows from the second-listed table (orders)</span>
-<span class="kw">SELECT</span> c.name, o.amount
-<span class="kw">FROM</span> customers c
-<span class="kw">RIGHT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;
-
-<span class="cm">-- Same result, written as a LEFT JOIN by swapping table order</span>
-<span class="kw">SELECT</span> c.name, o.amount
-<span class="kw">FROM</span> orders o
-<span class="kw">LEFT JOIN</span> customers c <span class="kw">ON</span> c.customer_id = o.customer_id;</code></pre>
-
-  <p>So if RIGHT JOIN is never necessary, why does it appear at all? Usually for <em>ergonomics</em>: an author wants to write a big "main" table first in the <code>FROM</code> clause for readability, but actually wants to preserve rows from the <em>other</em> table. RIGHT JOIN lets them do that without reordering. The cost is that the next reader has to flip their mental model &mdash; which is exactly why teams discourage it.</p>
-
-  <!-- ============================================================ -->
   <div class="amz-band">
   <span class="badge-amz">Amazon section</span>
-  <h2 class="section" id="amazon">4. Case study: what a large codebase actually does</h2>
+  <h2 class="section" id="amazon">2. Case study: what a large codebase actually does</h2>
   <p>To see how theory meets practice, we surveyed join usage across a very large industry codebase (Amazon's internal code search). All table and column names below have been replaced with generic dummy names; the patterns and proportions are faithful to what was found.</p>
 
-  <h3>4.1 The numbers</h3>
+  <h3>2.1 The numbers</h3>
   <p>Counts are approximate index match totals. The raw cross-file <code>RIGHT JOIN</code> number is inflated by minified JavaScript (SQL-formatter keyword lists, vendored libraries) that aren't real joins, so the <code>.sql</code>-only row is the honest measure.</p>
 
   <table>
@@ -537,10 +451,10 @@
 
   <div class="callout good">
     <span class="tag">Headline</span>
-    <p>In real SQL, <strong>RIGHT JOIN is about 1 in 45 outer joins (~2%)</strong>. LEFT JOIN is overwhelmingly the convention &mdash; matching best-practice &sect;2.2. And a chunk of even those RIGHT JOIN hits are database-engine <em>test fixtures</em>, not application queries.</p>
+    <p>In real SQL, <strong>RIGHT JOIN is about 1 in 45 outer joins (~2%)</strong>. LEFT JOIN is overwhelmingly the convention &mdash; matching best-practice &sect;3.2. And a chunk of even those RIGHT JOIN hits are database-engine <em>test fixtures</em>, not application queries.</p>
   </div>
 
-  <h3>4.2 Where RIGHT JOIN actually showed up &mdash; and whether it was necessary</h3>
+  <h3>2.2 Where RIGHT JOIN actually showed up &mdash; and whether it was necessary</h3>
   <p>Every genuine application query found was a behavior-preserving table-swap away from a LEFT JOIN. Here are the recurring patterns, with anonymized examples.</p>
 
   <h4>Pattern A &mdash; Keep every calendar date in a trend report</h4>
@@ -587,7 +501,7 @@
   <span class="kw">ON</span> r.from_code = rm.from_code <span class="kw">AND</span> r.to_code = <span class="st">'USD'</span>;</code></pre>
   <div class="callout warn">
     <span class="tag">Bonus lesson</span>
-    <p>The original puts <code>r.to_code = 'USD'</code> in the <code>WHERE</code> clause &mdash; the &sect;2.4 trap. On the LEFT-rewrite it belongs in <code>ON</code> to keep regions that have no matching rate.</p>
+    <p>The original puts <code>r.to_code = 'USD'</code> in the <code>WHERE</code> clause &mdash; the &sect;3.4 trap. On the LEFT-rewrite it belongs in <code>ON</code> to keep regions that have no matching rate.</p>
   </div>
   <p class="key"><strong>Was RIGHT the only way?</strong> No.</p>
 
@@ -621,6 +535,94 @@
     </table>
   </details>
   </div><!-- /amz-band -->
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="best">3. Industry best practices</h2>
+  <p class="key">These are the conventions you'll find echoed across widely-used SQL style guides (e.g. Holywell's <em>SQL Style Guide</em>, Mozilla's data-engineering guidelines, the dbt and GitLab analytics handbooks) and in most production teams.</p>
+
+  <h3>3.1 Prefer explicit <code>JOIN ... ON</code> over comma joins</h3>
+  <div class="callout good">
+    <span class="tag">Do</span>
+<pre style="margin:6px 0 0"><code><span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
+  </div>
+  <div class="callout bad">
+    <span class="tag">Avoid</span>
+<pre style="margin:6px 0 0"><code><span class="cm">-- old-style implicit join: easy to forget the filter and get a cross product</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c, orders o
+<span class="kw">WHERE</span> o.customer_id = c.customer_id;</code></pre>
+  </div>
+
+  <h3>3.2 Standardize on LEFT JOIN; avoid RIGHT JOIN</h3>
+  <p>This is the single most common team-level convention. Reading a query top-to-bottom, the first table in <code>FROM</code> is your "anchor," and every <code>LEFT JOIN</code> adds optional detail to it. RIGHT JOIN forces the reader to mentally flip that direction. Since any RIGHT JOIN can be rewritten as a LEFT JOIN (see &sect;4), most style guides simply ban it.</p>
+
+  <h3>3.3 Always qualify columns with table aliases</h3>
+  <p>Use short, meaningful aliases and prefix every column. It prevents ambiguity and survives future schema changes.</p>
+<pre><code><span class="cm">-- good: short aliases, every column qualified</span>
+<span class="kw">SELECT</span> c.name, o.order_id, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;</code></pre>
+
+  <h3>3.4 Put join logic in <code>ON</code>, filtering in <code>WHERE</code> &mdash; carefully</h3>
+  <div class="callout warn">
+    <span class="tag">Classic trap</span>
+    <p>Putting a condition on the <em>right</em> table of a LEFT JOIN into the <code>WHERE</code> clause silently turns it into an INNER JOIN, because <code>NULL</code> rows fail the filter.</p>
+<pre style="margin:8px 0 0"><code><span class="cm">-- BUG: this drops customers with no orders -- acts like INNER JOIN</span>
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id
+<span class="kw">WHERE</span> o.amount &gt; 100;
+
+<span class="cm">-- FIX: move the condition into the ON clause to preserve the outer side</span>
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> orders o
+  <span class="kw">ON</span> o.customer_id = c.customer_id
+  <span class="kw">AND</span> o.amount &gt; 100;</code></pre>
+  </div>
+
+  <h3>3.5 Beware row multiplication ("fan-out")</h3>
+  <p>If the right table has multiple matches per key, your row count multiplies and any <code>SUM()</code> double-counts. Aggregate the detail table first (in a CTE) before joining, or be deliberate about the grain.</p>
+<pre><code><span class="cm">-- aggregate first, then join one-row-per-customer</span>
+<span class="kw">WITH</span> order_totals <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> customer_id, <span class="kw">SUM</span>(amount) <span class="kw">AS</span> total
+  <span class="kw">FROM</span> orders
+  <span class="kw">GROUP BY</span> customer_id
+)
+<span class="kw">SELECT</span> c.name, t.total
+<span class="kw">FROM</span> customers c
+<span class="kw">LEFT JOIN</span> order_totals t <span class="kw">ON</span> t.customer_id = c.customer_id;</code></pre>
+
+  <h3>3.6 Other habits worth keeping</h3>
+  <ul>
+    <li><strong>Join on indexed / typed keys.</strong> Joining on mismatched types or wrapping keys in functions (e.g. <code>LOWER(a)=LOWER(b)</code>) can disable index use. If you must normalize, do it once upstream.</li>
+    <li><strong>Use <code>COALESCE</code></strong> to give outer-join <code>NULL</code>s a sensible default (<code>COALESCE(t.total, 0)</code>).</li>
+    <li><strong>Filter early.</strong> Reduce each side (date ranges, partitions) before joining large tables.</li>
+    <li><strong>Comment the intent</strong> of an outer join: "left join so customers with no orders are still listed."</li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 class="section" id="left-right">4. The big one: LEFT vs RIGHT</h2>
+
+  <div class="callout tip">
+    <span class="tag">The one fact to memorize</span>
+    <p><strong>Every RIGHT JOIN can be rewritten as a LEFT JOIN by swapping the order of the two tables.</strong> The result set is identical. RIGHT JOIN is pure syntactic sugar &mdash; there is no query that <em>requires</em> it.</p>
+  </div>
+
+  <p>These two queries are exactly equivalent:</p>
+<pre><code><span class="cm">-- RIGHT JOIN: keep all rows from the second-listed table (orders)</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> customers c
+<span class="kw">RIGHT JOIN</span> orders o <span class="kw">ON</span> o.customer_id = c.customer_id;
+
+<span class="cm">-- Same result, written as a LEFT JOIN by swapping table order</span>
+<span class="kw">SELECT</span> c.name, o.amount
+<span class="kw">FROM</span> orders o
+<span class="kw">LEFT JOIN</span> customers c <span class="kw">ON</span> c.customer_id = o.customer_id;</code></pre>
+
+  <p>So if RIGHT JOIN is never necessary, why does it appear at all? Usually for <em>ergonomics</em>: an author wants to write a big "main" table first in the <code>FROM</code> clause for readability, but actually wants to preserve rows from the <em>other</em> table. RIGHT JOIN lets them do that without reordering. The cost is that the next reader has to flip their mental model &mdash; which is exactly why teams discourage it.</p>
+
+
 
   <!-- ============================================================ -->
   <h2 class="section" id="takeaways">5. Key takeaways</h2>
