@@ -1,0 +1,2027 @@
+<!DOCTYPE html>
+<!--
+  Meowdoku Solver
+  ===============
+  One file, and that is all it needs. No web server, no internet connection, no
+  build step, no libraries. Open it in any modern browser, drop in a screenshot
+  of a Meowdoku board, check the grid it read, then step through the hints.
+
+  Everything runs on your machine. The screenshot is decoded in the page and
+  never leaves it.
+
+  Puzzle rules: one cat per colour, one cat per row and column, and no two cats
+  touching, not even at a corner.
+
+  Built from the sources in src/ by tools/build.js. To change the page, edit
+  those and rebuild, or edit the CSS and JS below directly if this copy has
+  travelled on its own.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meowdoku Solver</title>
+<style>:root {
+  --paper: #f6efe7;
+  --card: #fffdfa;
+  --ink: #4a3a31;
+  --ink-soft: #8a7668;
+  --line: #e6dbd0;
+  --accent: #5c4636;
+  --good: #3f7d52;
+  --bad: #b6483f;
+  --focus: #2f7fbf;
+  --radius: 16px;
+  --shadow: 0 1px 2px rgba(74, 58, 49, .06), 0 8px 24px rgba(74, 58, 49, .07);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 28px 20px 80px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1120px; margin: 0 auto; }
+
+header { text-align: center; margin-bottom: 26px; }
+header h1 { margin: 0 0 6px; font-size: 30px; letter-spacing: -.02em; }
+header p { margin: 0; color: var(--ink-soft); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px 26px;
+  margin-bottom: 22px;
+}
+.card > h2 {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 4px; font-size: 19px; letter-spacing: -.01em;
+}
+.card > h2 .num {
+  flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 600;
+  display: grid; place-items: center;
+}
+.card > h2 .aside { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--ink-soft); }
+.card > .lede { margin: 0 0 18px 36px; color: var(--ink-soft); font-size: 14px; }
+
+/* ---------------------------------------------------------------- controls */
+
+button {
+  font: inherit; cursor: pointer;
+  border-radius: 10px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff;
+  padding: 9px 15px; font-weight: 550;
+  transition: filter .12s, background .12s;
+}
+button:hover:not(:disabled) { filter: brightness(1.12); }
+button:disabled { opacity: .42; cursor: default; }
+button.ghost { background: transparent; color: var(--accent); border-color: var(--line); }
+button.ghost:hover:not(:disabled) { background: #f3ece4; filter: none; }
+button.link {
+  background: none; border: none; color: var(--focus);
+  padding: 0; text-decoration: underline; font-weight: 550;
+}
+button.big { padding: 12px 22px; font-size: 16px; }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spacer { flex: 1 1 auto; }
+label.field { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-soft); }
+label.field input[type=number] {
+  width: 58px; font: inherit; padding: 5px 7px;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+input[type=range] { accent-color: var(--accent); }
+
+.note {
+  margin-top: 14px; padding: 11px 14px; border-radius: 11px;
+  font-size: 14px; border: 1px solid var(--line); background: #faf6f1;
+}
+.note.bad { border-color: #e7c3bf; background: #fdf1f0; color: #8d3a33; }
+.note.good { border-color: #c6e0cd; background: #f1f9f3; color: #2f6741; }
+.note ul { margin: 6px 0 0; padding-left: 20px; }
+
+/* ------------------------------------------------------------------- drop */
+
+.drop {
+  border: 2px dashed #d8cabb; border-radius: 14px;
+  padding: 34px 20px; text-align: center; background: #fdfaf6;
+  transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--focus); background: #f2f8fd; }
+.drop p { margin: 0 0 6px; }
+.drop .muted { color: var(--ink-soft); font-size: 13px; margin: 0; }
+
+/* ------------------------------------------------------------------ board */
+
+.editor { display: grid; grid-template-columns: minmax(300px, 1fr) 300px; gap: 26px; align-items: start; }
+.hints-layout { display: grid; grid-template-columns: minmax(300px, 1fr) 1fr; gap: 26px; align-items: start; }
+@media (max-width: 860px) {
+  .editor, .hints-layout { grid-template-columns: 1fr; }
+}
+
+.board-frame {
+  --n: 10;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  grid-template-rows: 20px 1fr;
+  gap: 4px;
+  max-width: 560px;
+}
+.board-frame .corner { grid-area: 1/1; }
+.board-frame .top-labels {
+  grid-area: 1/2;
+  display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px;
+}
+.board-frame .side-labels {
+  grid-area: 2/1;
+  display: grid; grid-template-rows: repeat(var(--n), 1fr); gap: 3px;
+}
+.board-frame .lbl {
+  display: grid; place-items: center;
+  font-size: 11px; color: var(--ink-soft); font-variant-numeric: tabular-nums;
+  border-radius: 5px;
+}
+.board-frame .lbl.hot { background: var(--accent); color: #fff; font-weight: 700; }
+
+.board {
+  grid-area: 2/2;
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  gap: 3px;
+  padding: 7px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  touch-action: none;
+}
+.cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 18%;
+  display: grid; place-items: center;
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow .1s, transform .1s;
+}
+.board.readonly .cell { cursor: default; }
+.cell:hover { transform: scale(1.04); z-index: 2; }
+.board.readonly .cell:hover { transform: none; }
+.cell .cat { width: 82%; height: 82%; display: block; }
+.cell .struck {
+  width: 44%; height: 44%; opacity: .5;
+  stroke: #33241d; stroke-width: 5; stroke-linecap: round;
+}
+.cell.focus { box-shadow: inset 0 0 0 3px var(--focus), 0 0 0 2px rgba(47, 127, 191, .3); z-index: 3; }
+.cell.pending .struck { opacity: 1; stroke: var(--bad); animation: pop .35s ease-out; }
+.cell.pending { box-shadow: inset 0 0 0 3px var(--bad); z-index: 3; }
+.cell.fresh .cat { animation: pop .35s ease-out; }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* --------------------------------------------------------------- palette */
+
+.tools h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
+.tools > section { margin-bottom: 22px; }
+
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.mode {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px;
+  background: #fff; cursor: pointer; font-size: 13.5px; color: var(--ink); text-align: left;
+  font-weight: 500;
+}
+.mode.on { border-color: var(--accent); background: #f5efe8; box-shadow: inset 0 0 0 1px var(--accent); }
+.mode .glyph { font-size: 15px; }
+
+.palette { display: flex; flex-wrap: wrap; gap: 7px; }
+.swatch {
+  position: relative; width: 42px; height: 42px; border-radius: 11px;
+  border: 2px solid transparent; cursor: pointer; padding: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08);
+  display: grid; place-items: end center;
+}
+.swatch.on { border-color: var(--ink); }
+.swatch .n { font-size: 10px; font-weight: 700; padding-bottom: 2px; opacity: .85; }
+.swatch.add { background: #fff; border: 1px dashed #cfc0b1; color: var(--ink-soft); place-items: center; font-size: 20px; }
+
+.sel-color { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; }
+.sel-color input[type=color] {
+  width: 40px; height: 30px; padding: 0; border: 1px solid var(--line);
+  border-radius: 8px; background: none; cursor: pointer;
+}
+
+/* ----------------------------------------------------------------- hints */
+
+.hint-now {
+  border: 1px solid var(--line); border-radius: 13px; padding: 15px 17px;
+  background: #fdfaf6; min-height: 128px;
+}
+.hint-now .tag {
+  display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: #fff; background: var(--accent);
+  padding: 3px 9px; border-radius: 999px; margin-bottom: 9px;
+}
+.hint-now .tag.place { background: var(--good); }
+.hint-now p { margin: 0; font-size: 15px; }
+.hint-now .step-no { color: var(--ink-soft); font-size: 13px; margin: 10px 0 0; }
+
+.hint-list { margin: 18px 0 0; padding: 0; list-style: none; max-height: 340px; overflow: auto; }
+.hint-list li {
+  display: flex; gap: 10px; padding: 9px 11px; border-radius: 10px;
+  font-size: 13.5px; cursor: pointer; border: 1px solid transparent;
+}
+.hint-list li:hover { background: #f8f3ed; }
+.hint-list li.done { color: var(--ink-soft); }
+.hint-list li.current { border-color: var(--accent); background: #f5efe8; }
+.hint-list li .idx { flex: none; width: 22px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.hint-list li .what { font-weight: 600; }
+.hint-list li .eff { color: var(--ink-soft); }
+
+.legend { margin-top: 14px; font-size: 12.5px; color: var(--ink-soft); display: flex; gap: 16px; flex-wrap: wrap; }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.chip { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+.chip.f { box-shadow: inset 0 0 0 3px var(--focus); background: #dfeaf4; }
+.chip.p { box-shadow: inset 0 0 0 3px var(--bad); background: #f7e2e0; }
+
+pre.export {
+  margin: 12px 0 0; padding: 12px; background: #f7f2ec; border: 1px solid var(--line);
+  border-radius: 10px; font-size: 12px; overflow: auto; max-height: 200px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Meowdoku Solver</h1>
+    <p>Drop in a screenshot, check the board it read, then work through hints you can follow yourself.</p>
+  </header>
+
+  <!-- ------------------------------------------------------------ step 1 -->
+  <section class="card" id="step-load">
+    <h2><span class="num">1</span> Load a screenshot</h2>
+    <div class="drop" id="drop">
+      <input type="file" id="file" accept="image/*" hidden>
+      <p><strong>Drop a screenshot here</strong>, <button class="link" id="browse">choose a file</button>, or just paste one with Cmd+V.</p>
+      <p class="muted">Any board from 5x5 up to 15x15. A whole phone screenshot is fine, no cropping needed.
+        Cats and crosses already on the board get picked up too.</p>
+      <p class="muted" style="margin-top:10px">No image handy? <button class="link" id="example">Load the level 119 example</button></p>
+    </div>
+    <div class="note" id="loadNote" hidden></div>
+  </section>
+
+  <!-- ------------------------------------------------------------ step 2 -->
+  <section class="card" id="step-check" hidden>
+    <h2><span class="num">2</span> Check the board
+      <span class="aside">Click a cell to fix anything the reader got wrong</span>
+    </h2>
+    <div class="editor">
+      <div>
+        <div class="board-frame" id="editBoard"></div>
+        <div class="note" id="problems" hidden></div>
+        <div class="row" style="margin-top:16px">
+          <button class="big" id="approve">Looks right, give me hints</button>
+          <button class="ghost" id="clearGivens">Clear cats and crosses</button>
+        </div>
+      </div>
+
+      <div class="tools">
+        <section>
+          <h3>Tool</h3>
+          <div class="modes" id="modes"></div>
+        </section>
+
+        <section>
+          <h3>Colours</h3>
+          <div class="palette" id="palette"></div>
+          <div class="sel-color" id="selColor"></div>
+        </section>
+
+        <section>
+          <h3>Re-read the image</h3>
+          <div class="row">
+            <label class="field">Colour split
+              <input type="range" id="tol" min="16" max="80" value="40">
+              <span id="tolVal">40</span>
+            </label>
+          </div>
+          <p class="muted" style="font-size:12.5px;color:var(--ink-soft);margin:6px 0 10px">
+            Lower splits similar shades into separate colours, higher merges them.
+          </p>
+          <div class="row">
+            <label class="field"><input type="checkbox" id="forceSize"> Force size</label>
+            <label class="field">rows <input type="number" id="rowsIn" min="3" max="20"></label>
+            <label class="field">cols <input type="number" id="colsIn" min="3" max="20"></label>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="ghost" id="reread">Read image again</button>
+          </div>
+        </section>
+
+        <section>
+          <h3>Board as text</h3>
+          <pre class="export" id="exportBox"></pre>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ step 3 -->
+  <section class="card" id="step-hints" hidden>
+    <h2><span class="num">3</span> Hints
+      <span class="aside">Arrow keys step through them</span>
+    </h2>
+    <p class="lede">One cat per colour, one per row and column, and no two cats touching, not even at a corner.
+      Every hint below only uses those three rules.</p>
+    <div id="solveNotes"></div>
+    <div class="hints-layout">
+      <div>
+        <div class="board-frame" id="hintBoard"></div>
+        <div class="legend">
+          <span><i class="chip f"></i> the evidence</span>
+          <span><i class="chip p"></i> about to be ruled out</span>
+          <span>✕ already ruled out</span>
+        </div>
+      </div>
+      <div>
+        <div class="hint-now" id="hintNow"></div>
+        <div class="row" style="margin-top:14px">
+          <button id="nextHint">Apply and next</button>
+          <button class="ghost" id="prevHint">Back</button>
+          <button class="ghost" id="allHints">Apply all</button>
+          <button class="ghost" id="resetHints">Start over</button>
+          <span class="spacer"></span>
+          <button class="ghost" id="reveal">Just show me the answer</button>
+        </div>
+        <p class="muted" id="hintCount" style="color:var(--ink-soft);font-size:13px;margin:10px 0 0"></p>
+        <ol class="hint-list" id="hintList"></ol>
+      </div>
+    </div>
+  </section>
+
+</div>
+<script>/* ===== colors.js ===== */
+/* ===========================================================================
+   colors.js  --  turn a hex swatch into a word, so hints can say
+   "the teal region" instead of "region #5aa7bd".
+   ========================================================================= */
+(function (root) {
+  'use strict';
+
+  function hexToRgb(hex) {
+    const h = hex.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return [h, s, l];
+  }
+
+  const HUES = [
+    [345, 361, 'red'], [0, 14, 'red'],
+    [14, 45, 'orange'],
+    [45, 68, 'yellow'],
+    [68, 100, 'lime'],
+    [100, 156, 'green'],
+    [156, 200, 'teal'],
+    [200, 243, 'blue'],
+    [243, 276, 'purple'],
+    [276, 321, 'magenta'],
+    [321, 345, 'rose'],
+  ];
+
+  function nameOf(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    const [h, s, l] = rgbToHsl(r, g, b);
+    if (s < 0.12) {
+      if (l < 0.2) return 'black';
+      if (l < 0.45) return 'dark grey';
+      if (l < 0.75) return 'grey';
+      return 'white';
+    }
+    let base = 'colour';
+    for (const [lo, hi, name] of HUES) if (h >= lo && h < hi) { base = name; break; }
+    // warm mid-dark tones read as brown / gold rather than orange / yellow
+    if (base === 'orange' && l < 0.55) return 'brown';
+    if (base === 'yellow' && l < 0.62) return 'gold';
+    if (base === 'yellow' && l >= 0.7) return 'cream';
+    if (l > 0.72) return 'light ' + base;
+    if (l < 0.32) return 'dark ' + base;
+    return base;
+  }
+
+  /** Names for a whole palette, made unique so hints are never ambiguous. */
+  function nameAll(hexes) {
+    const raw = hexes.map(nameOf);
+    const counts = {};
+    for (const n of raw) counts[n] = (counts[n] || 0) + 1;
+    const seen = {};
+    return raw.map((n) => {
+      if (counts[n] === 1) return n;
+      seen[n] = (seen[n] || 0) + 1;
+      return `${n} ${seen[n]}`;
+    });
+  }
+
+  /** Readable text colour to sit on top of a swatch. */
+  function inkFor(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#2c2320' : '#ffffff';
+  }
+
+  const api = { nameOf, nameAll, inkFor, hexToRgb };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.MeowColors = api;
+})(typeof self !== 'undefined' ? self : this);
+
+/* ===== parse.js ===== */
+/* ===========================================================================
+   parse.js  --  screenshot -> grid
+   ---------------------------------------------------------------------------
+   The board in a Meowdoku screenshot is a grid of N x N rounded squares, each
+   filled with one flat colour, separated by white gutters. That gives us a
+   very simple recipe, no computer vision library required:
+
+     1. mark every pixel that is a "flat cell colour"  (not page background,
+        not white, not black)
+     2. flood fill those pixels into blobs. Because the gutters are white,
+        every cell is its own blob even when neighbours share a colour.
+     3. keep the blobs that look like cells: square-ish, mostly filled, and
+        all roughly the same size. The board's N*N cells are by far the
+        largest such family in the picture, so "most common size" wins.
+     4. group the blob centres into rows (same y) and columns (same x). The
+        number of groups IS the grid size, so 5x5 .. 15x15 all work with no
+        extra configuration.
+     5. read each cell: median colour ignoring black/white pixels (so a cat
+        sprite or an X mark drawn on top does not pollute the colour), plus a
+        black-pixel test for "cat here" and a white-pixel test for "X here".
+     6. merge near-identical cell colours into colour groups (regions).
+
+   Works on a plain {width, height, data:RGBA} bitmap so it can be unit tested
+   in node and run from a <canvas> in the browser unchanged.
+   ========================================================================= */
+(function (root) {
+  'use strict';
+
+  // Two cell colours closer than this in RGB are treated as the same region.
+  // Real boards keep their colours well apart (the level 119 palette's closest
+  // pair is 67 apart), so 40 leaves room for screenshot compression noise.
+  const DEFAULT_TOLERANCE = 40;
+
+  // --- pixel helpers -------------------------------------------------------
+
+  function px(img, x, y) {
+    const i = (y * img.width + x) * 4;
+    return [img.data[i], img.data[i + 1], img.data[i + 2]];
+  }
+
+  function dist2(a, b) {
+    const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+  }
+
+  // "Paper" pixels: the page background and the white card / gutters.
+  function isWhitish(r, g, b) {
+    return r > 232 && g > 232 && b > 232;
+  }
+  function isBlackish(r, g, b) {
+    return r < 90 && g < 90 && b < 90;
+  }
+
+  // --- step 1 + 2: mask and blobs -----------------------------------------
+
+  function buildMask(img, bg) {
+    const { width: w, height: h, data } = img;
+    const mask = new Uint8Array(w * h);
+    for (let y = 0, i = 0, p = 0; y < h; y++) {
+      for (let x = 0; x < w; x++, i++, p += 4) {
+        const r = data[p], g = data[p + 1], b = data[p + 2], a = data[p + 3];
+        if (a < 128) continue;
+        if (isWhitish(r, g, b)) continue;
+        if (isBlackish(r, g, b)) continue;
+        if (dist2([r, g, b], bg) < 26 * 26) continue; // page background
+        mask[i] = 1;
+      }
+    }
+    return mask;
+  }
+
+  function findBlobs(mask, w, h) {
+    const seen = new Uint8Array(w * h);
+    const stack = new Int32Array(w * h);
+    const blobs = [];
+    for (let start = 0; start < mask.length; start++) {
+      if (!mask[start] || seen[start]) continue;
+      let sp = 0;
+      stack[sp++] = start;
+      seen[start] = 1;
+      let area = 0, x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+      while (sp > 0) {
+        const i = stack[--sp];
+        const x = i % w, y = (i - x) / w;
+        area++;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        if (x > 0 && mask[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+        if (x < w - 1 && mask[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+        if (y > 0 && mask[i - w] && !seen[i - w]) { seen[i - w] = 1; stack[sp++] = i - w; }
+        if (y < h - 1 && mask[i + w] && !seen[i + w]) { seen[i + w] = 1; stack[sp++] = i + w; }
+      }
+      blobs.push({ x0, y0, x1, y1, area, w: x1 - x0 + 1, h: y1 - y0 + 1 });
+    }
+    return blobs;
+  }
+
+  // --- step 3: which blobs are cells? -------------------------------------
+
+  function cellCandidates(blobs, imgW, imgH) {
+    const maxSide = Math.min(imgW, imgH) / 3;
+    return blobs.filter((b) => {
+      if (b.w < 8 || b.h < 8 || b.w > maxSide || b.h > maxSide) return false;
+      const big = Math.max(b.w, b.h);
+      if (Math.abs(b.w - b.h) > Math.max(3, big * 0.18)) return false; // square-ish
+      // A cat sprite or a cross drawn on a cell leaves a ring of cell colour
+      // with a hole in the middle, so a cell is not necessarily solid. Measured
+      // on a real screenshot: a plain cell fills 0.99 of its box, one with a
+      // cross 0.81, one with a cat 0.68. The bar sits well below all three so a
+      // chunkier sprite still counts, and pruneToLattice throws out whatever
+      // junk this lets through.
+      return b.area / (b.w * b.h) >= 0.42;
+    });
+  }
+
+  // Cells all share one size, so the winning size bucket is the board.
+  function dominantSize(cands) {
+    let best = null;
+    for (const seed of cands) {
+      const s = (seed.w + seed.h) / 2;
+      const group = cands.filter((b) => Math.abs((b.w + b.h) / 2 - s) <= Math.max(3, s * 0.12));
+      if (!best || group.length > best.group.length ||
+        (group.length === best.group.length && s > best.size)) {
+        best = { size: s, group };
+      }
+    }
+    return best;
+  }
+
+  // --- step 4: centres -> rows and columns --------------------------------
+
+  function groupCoords(values, gap) {
+    const sorted = values.slice().sort((a, b) => a - b);
+    const groups = [];
+    let cur = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] > gap) { groups.push(cur); cur = []; }
+      cur.push(sorted[i]);
+    }
+    groups.push(cur);
+    return groups.map((g) => g.reduce((a, b) => a + b, 0) / g.length);
+  }
+
+  /**
+   * Throw away blobs that are not part of the board.
+   *
+   * Ad banners and app icons can be close enough to cell size to survive the
+   * size filter, and they add a phantom row or column that knocks the whole
+   * sampling lattice out of alignment. The board is a solid block though:
+   * every one of its rows spans every one of its columns. So while some band
+   * is mostly empty, drop the emptiest one. A banner row holding three icons
+   * across eleven columns goes first, then the column bands only that banner
+   * occupied are left empty and go too, which leaves just the board.
+   */
+  function pruneToLattice(cells, size) {
+    let kept = cells.slice();
+    let ys = groupCoords(cells.map((b) => (b.y0 + b.y1) / 2), size * 0.5);
+    let xs = groupCoords(cells.map((b) => (b.x0 + b.x1) / 2), size * 0.5);
+
+    for (let guard = 0; guard < 60; guard++) {
+      if (ys.length <= 3 || xs.length <= 3) break;
+      const rowCount = new Array(ys.length).fill(0);
+      const colCount = new Array(xs.length).fill(0);
+      const seen = new Set();
+      for (const b of kept) {
+        const ri = nearestIndex(ys, (b.y0 + b.y1) / 2);
+        const ci = nearestIndex(xs, (b.x0 + b.x1) / 2);
+        const key = ri * 1000 + ci;
+        if (seen.has(key)) continue; // two blobs on one lattice spot count once
+        seen.add(key);
+        rowCount[ri]++;
+        colCount[ci]++;
+      }
+      let worst = null;
+      rowCount.forEach((n, i) => {
+        const occ = n / xs.length;
+        if (!worst || occ < worst.occ) worst = { occ, axis: 'row', i };
+      });
+      colCount.forEach((n, i) => {
+        const occ = n / ys.length;
+        if (!worst || occ < worst.occ) worst = { occ, axis: 'col', i };
+      });
+      if (worst.occ >= 0.8) break;
+
+      if (worst.axis === 'row') {
+        kept = kept.filter((b) => nearestIndex(ys, (b.y0 + b.y1) / 2) !== worst.i);
+        ys.splice(worst.i, 1);
+      } else {
+        kept = kept.filter((b) => nearestIndex(xs, (b.x0 + b.x1) / 2) !== worst.i);
+        xs.splice(worst.i, 1);
+      }
+    }
+    return { cells: kept, xs, ys };
+  }
+
+  function median(values) {
+    const a = values.slice().sort((x, y) => x - y);
+    return a[a.length >> 1];
+  }
+
+  function nearestIndex(centres, v) {
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < centres.length; i++) {
+      const d = Math.abs(centres[i] - v);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    return bi;
+  }
+
+  // --- step 5: read one cell ----------------------------------------------
+
+  // A cat sprite (black + white) or an X mark (white) sits in the middle of a
+  // cell, so the colour is read from a ring near the cell's edge, and taken as
+  // the most common colour bucket there rather than an average -- that shrugs
+  // off sprite antialiasing bleeding into the ring. The middle of the cell is
+  // used only to answer "is there a cat / an X drawn here?".
+  function readCell(img, cx, cy, size) {
+    const outer = Math.max(3, Math.round(size * 0.46));
+    const inner = Math.max(2, Math.round(size * 0.30));
+    const step = Math.max(1, Math.round(size / 40));
+    const buckets = new Map();
+    let black = 0, white = 0, mid = 0;
+    for (let y = cy - outer; y <= cy + outer; y += step) {
+      if (y < 0 || y >= img.height) continue;
+      for (let x = cx - outer; x <= cx + outer; x += step) {
+        if (x < 0 || x >= img.width) continue;
+        const [r, g, b] = px(img, x, y);
+        const cheb = Math.max(Math.abs(x - cx), Math.abs(y - cy));
+        if (cheb <= inner) {
+          mid++;
+          if (isBlackish(r, g, b)) black++;
+          else if (isWhitish(r, g, b)) white++;
+          continue;
+        }
+        if (cheb < inner + step) continue; // gap between the two zones
+        if (isBlackish(r, g, b) || isWhitish(r, g, b)) continue;
+        const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+        let acc = buckets.get(key);
+        if (!acc) buckets.set(key, (acc = [0, 0, 0, 0]));
+        acc[0] += r; acc[1] += g; acc[2] += b; acc[3]++;
+      }
+    }
+    let best = null;
+    for (const acc of buckets.values()) if (!best || acc[3] > best[3]) best = acc;
+    return {
+      color: best ? [Math.round(best[0] / best[3]), Math.round(best[1] / best[3]), Math.round(best[2] / best[3])] : [255, 255, 255],
+      blackFrac: mid ? black / mid : 0,
+      whiteFrac: mid ? white / mid : 0,
+    };
+  }
+
+  // --- step 6: merge cell colours into regions ----------------------------
+
+  function clusterColors(cells, tolerance) {
+    const tol2 = tolerance * tolerance;
+    const groups = []; // { sum:[r,g,b], n, color:[r,g,b] }
+    for (const cell of cells) {
+      let hit = -1, bd = Infinity;
+      for (let i = 0; i < groups.length; i++) {
+        const d = dist2(groups[i].color, cell.color);
+        if (d < tol2 && d < bd) { bd = d; hit = i; }
+      }
+      if (hit < 0) {
+        groups.push({ sum: cell.color.slice(), n: 1, color: cell.color.slice() });
+        cell.colorId = groups.length - 1;
+      } else {
+        const g = groups[hit];
+        g.sum[0] += cell.color[0]; g.sum[1] += cell.color[1]; g.sum[2] += cell.color[2];
+        g.n++;
+        g.color = [Math.round(g.sum[0] / g.n), Math.round(g.sum[1] / g.n), Math.round(g.sum[2] / g.n)];
+        cell.colorId = hit;
+      }
+    }
+    return groups.map((g) => g.color);
+  }
+
+  // --- public entry point --------------------------------------------------
+
+  /**
+   * @param {{width:number,height:number,data:Uint8Array}} img
+   * @returns {{rows,cols,colors:string[],grid:number[][],cats:[r,c][],marks:[r,c][],debug}}
+   */
+  function parseBoard(img, opts) {
+    opts = opts || {};
+    const bg = px(img, 2, 2);
+    const mask = buildMask(img, bg);
+    const blobs = findBlobs(mask, img.width, img.height);
+    const cands = cellCandidates(blobs, img.width, img.height);
+    if (cands.length < 9) throw new Error('No grid found in this image.');
+
+    const dom = dominantSize(cands);
+    const lattice = pruneToLattice(dom.group, dom.size);
+    const cells = lattice.cells;
+    if (cells.length < 9) throw new Error('No grid found in this image.');
+    let size = median(cells.map((b) => (b.w + b.h) / 2));
+
+    let xs = lattice.xs, ys = lattice.ys;
+    let cols = xs.length, rows = ys.length;
+    // Cells are read off the lattice rather than off their blobs, so a few
+    // missing blobs are harmless. Far fewer than expected means the grid was
+    // not really found, which is worth saying plainly instead of guessing.
+    if (cells.length < rows * cols * 0.75) {
+      throw new Error(`Found a ${rows}x${cols} grid but only ${cells.length} of its ${rows * cols} cells. Try a tighter crop of just the board.`);
+    }
+
+    // Manual override: keep the detected board outline but lay a different
+    // number of cells across it. Lets the user fix a miscount by hand.
+    const bounds = {
+      x0: Math.min(...cells.map((b) => b.x0)), x1: Math.max(...cells.map((b) => b.x1)),
+      y0: Math.min(...cells.map((b) => b.y0)), y1: Math.max(...cells.map((b) => b.y1)),
+    };
+    if (opts.forceRows || opts.forceCols) {
+      rows = opts.forceRows || rows;
+      cols = opts.forceCols || cols;
+      const pitchX = (bounds.x1 - bounds.x0 + 1) / cols;
+      const pitchY = (bounds.y1 - bounds.y0 + 1) / rows;
+      xs = []; ys = [];
+      for (let c = 0; c < cols; c++) xs.push(bounds.x0 + pitchX * (c + 0.5));
+      for (let r = 0; r < rows; r++) ys.push(bounds.y0 + pitchY * (r + 0.5));
+      size = Math.min(pitchX, pitchY) * 0.94;
+    }
+    if (rows < 3 || cols < 3 || rows > 20 || cols > 20) {
+      throw new Error(`Detected an implausible ${rows}x${cols} grid. Try a tighter crop of just the board.`);
+    }
+
+    // Sample on the geometric lattice (not blob centres) so a cell whose blob
+    // was distorted by a cat sprite is still read at the right spot.
+    const grid = [], cats = [], marks = [];
+    const flat = [];
+    for (let r = 0; r < rows; r++) {
+      grid.push(new Array(cols).fill(-1));
+      for (let c = 0; c < cols; c++) {
+        const info = readCell(img, Math.round(xs[c]), Math.round(ys[r]), size);
+        info.r = r; info.c = c;
+        flat.push(info);
+        if (info.blackFrac > 0.05) cats.push([r, c]);
+        else if (info.whiteFrac > 0.12) marks.push([r, c]);
+      }
+    }
+    // A square board needs exactly one colour per row. If the default
+    // tolerance does not produce that, try a few others: too high merges two
+    // similar regions into one, too low splits one region in two.
+    let tolerance = opts.colorTolerance || DEFAULT_TOLERANCE;
+    let colors = clusterColors(flat, tolerance);
+    if (!opts.colorTolerance && rows === cols && colors.length !== rows) {
+      for (const t of [36, 30, 26, 22, 18, 46, 54, 62]) {
+        const attempt = clusterColors(flat, t);
+        if (attempt.length === rows) { colors = attempt; tolerance = t; break; }
+      }
+      // clusterColors stamped colorId during the last attempt, so if none of
+      // the retries worked, redo the clustering we actually want to keep.
+      if (colors.length !== rows) colors = clusterColors(flat, tolerance);
+    }
+    for (const cell of flat) grid[cell.r][cell.c] = cell.colorId;
+
+    return {
+      rows,
+      cols,
+      colors: colors.map(rgbToHex),
+      grid,
+      cats,
+      marks,
+      debug: { cellSize: size, tolerance, blobs: blobs.length, candidates: cands.length, kept: cells.length, xs, ys, bounds },
+    };
+  }
+
+  function rgbToHex(c) {
+    return '#' + c.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+  }
+
+  const api = { parseBoard, rgbToHex };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.MeowParse = api;
+})(typeof self !== 'undefined' ? self : this);
+
+/* ===== solve.js ===== */
+/* ===========================================================================
+   solve.js  --  rules, solver, and the human-readable hint engine
+   ---------------------------------------------------------------------------
+   Rules of Meowdoku, for an N x N board with N colours:
+     1. exactly one cat per colour
+     2. exactly one cat per row and per column
+     3. no two cats touch, not even diagonally
+
+   Two independent engines live here:
+
+   * solveAll()  - plain backtracking search. Used to check the board is
+                   well formed and has exactly one solution.
+   * nextHint()  - candidate elimination. It only ever makes deductions a
+                   person could make at the board, and explains each one in
+                   words. This is what drives the hint list.
+   ========================================================================= */
+(function (root) {
+  'use strict';
+
+  // ---------------------------------------------------------------- helpers
+
+  const cellName = (r, c) => `R${r + 1}C${c + 1}`;
+
+  function listNames(items) {
+    if (items.length <= 1) return items.join('');
+    if (items.length === 2) return `${items[0]} and ${items[1]}`;
+    return items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1];
+  }
+
+  function combinations(items, k) {
+    const out = [];
+    const pick = (start, acc) => {
+      if (acc.length === k) { out.push(acc.slice()); return; }
+      for (let i = start; i <= items.length - (k - acc.length); i++) {
+        acc.push(items[i]);
+        pick(i + 1, acc);
+        acc.pop();
+      }
+    };
+    pick(0, []);
+    return out;
+  }
+
+  function touches(r1, c1, r2, c2) {
+    return Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1 && !(r1 === r2 && c1 === c2);
+  }
+
+  // ------------------------------------------------------- board validation
+
+  /** @returns {string[]} list of problems; empty means the board is well formed */
+  function validate(board) {
+    const problems = [];
+    const { rows, cols, grid, colors } = board;
+    if (rows !== cols) problems.push(`The board is ${rows}x${cols}. Meowdoku boards are square.`);
+    const used = new Set();
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) used.add(grid[r][c]);
+    if (used.size !== rows) {
+      problems.push(`The board has ${rows} rows but ${used.size} colours in use. A board needs exactly one colour per row.`);
+    }
+    for (let i = 0; i < colors.length; i++) {
+      if (!used.has(i)) problems.push(`Colour ${i + 1} is not used by any cell.`);
+    }
+    return problems;
+  }
+
+  // ------------------------------------------------------------- the solver
+
+  /**
+   * Backtracking search, one cat per row from the top down.
+   * @param {object} board  {rows, cols, grid}
+   * @param {object} [opts] {limit, fixed:[[r,c],...], banned:[[r,c],...]}
+   * @returns {number[][]} solutions, each an array of [row, col]
+   */
+  function solveAll(board, opts) {
+    opts = opts || {};
+    const limit = opts.limit || 2;
+    const { rows, cols, grid } = board;
+    const fixedByRow = new Map();
+    for (const [r, c] of opts.fixed || []) fixedByRow.set(r, c);
+    const banned = new Set((opts.banned || []).map(([r, c]) => r * cols + c));
+
+    const solutions = [];
+    const colUsed = new Array(cols).fill(false);
+    const colorUsed = new Map();
+    const placed = [];
+
+    function place(r) {
+      if (r === rows) { solutions.push(placed.slice()); return; }
+      const only = fixedByRow.has(r) ? [fixedByRow.get(r)] : null;
+      for (let c = 0; c < cols; c++) {
+        if (only && !only.includes(c)) continue;
+        if (colUsed[c] || banned.has(r * cols + c)) continue;
+        const color = grid[r][c];
+        if (colorUsed.get(color)) continue;
+        if (r > 0) {
+          const prev = placed[placed.length - 1];
+          if (prev && touches(prev[0], prev[1], r, c)) continue;
+        }
+        colUsed[c] = true;
+        colorUsed.set(color, true);
+        placed.push([r, c]);
+        place(r + 1);
+        placed.pop();
+        colorUsed.set(color, false);
+        colUsed[c] = false;
+        if (solutions.length >= limit) return;
+      }
+    }
+    place(0);
+    return solutions;
+  }
+
+  // ------------------------------------------------------- candidate state
+
+  const CANDIDATE = 0, STRUCK = 1, CAT = 2;
+
+  /**
+   * Build a candidate state from the cats and crosses already on the board.
+   * A given cat is only honoured if its cell is still open: two cats that
+   * share a row, column or colour, or that touch, cannot both be right, and
+   * taking both would leave a state that breaks one cat per row. The UI
+   * refuses to solve such a board, but the rules below assume a consistent
+   * state, so the invariant is enforced here too rather than trusted.
+   * Anything dropped is listed on state.ignored.
+   */
+  function createState(board, givens) {
+    const { rows, cols } = board;
+    const status = [];
+    for (let r = 0; r < rows; r++) status.push(new Array(cols).fill(CANDIDATE));
+    const state = { board, status, cats: [], ignored: [] };
+    for (const [r, c] of (givens && givens.cats) || []) {
+      if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+      if (state.status[r][c] === CANDIDATE) applyCat(state, r, c);
+      else state.ignored.push([r, c]);
+    }
+    for (const [r, c] of (givens && givens.marks) || []) {
+      if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+      if (state.status[r][c] === CANDIDATE) state.status[r][c] = STRUCK;
+    }
+    return state;
+  }
+
+  /** cells a cat at (r,c) rules out: its row, its column, its colour, its 8 neighbours */
+  function knockedOutBy(state, r, c) {
+    const { rows, cols, grid } = state.board;
+    const color = grid[r][c];
+    const out = [];
+    const seen = new Set();
+    const add = (rr, cc) => {
+      if (rr < 0 || cc < 0 || rr >= rows || cc >= cols) return;
+      if (rr === r && cc === c) return;
+      if (state.status[rr][cc] !== CANDIDATE) return;
+      const key = rr * cols + cc;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push([rr, cc]);
+    };
+    for (let cc = 0; cc < cols; cc++) add(r, cc);
+    for (let rr = 0; rr < rows; rr++) add(rr, c);
+    for (let rr = 0; rr < rows; rr++) for (let cc = 0; cc < cols; cc++) if (grid[rr][cc] === color) add(rr, cc);
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) add(r + dr, c + dc);
+    return out;
+  }
+
+  function applyCat(state, r, c) {
+    const removed = knockedOutBy(state, r, c);
+    for (const [rr, cc] of removed) state.status[rr][cc] = STRUCK;
+    state.status[r][c] = CAT;
+    state.cats.push([r, c]);
+    return removed;
+  }
+
+  // --- views over the current state ---------------------------------------
+
+  function candidatesOfColor(state, color) {
+    const { rows, cols, grid } = state.board;
+    const out = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      if (grid[r][c] === color && state.status[r][c] === CANDIDATE) out.push([r, c]);
+    }
+    return out;
+  }
+  function candidatesOfRow(state, r) {
+    const out = [];
+    for (let c = 0; c < state.board.cols; c++) if (state.status[r][c] === CANDIDATE) out.push([r, c]);
+    return out;
+  }
+  function candidatesOfCol(state, c) {
+    const out = [];
+    for (let r = 0; r < state.board.rows; r++) if (state.status[r][c] === CANDIDATE) out.push([r, c]);
+    return out;
+  }
+  function hasCatInRow(state, r) { return state.cats.some(([rr]) => rr === r); }
+  function hasCatInCol(state, c) { return state.cats.some(([, cc]) => cc === c); }
+  function hasCatOfColor(state, color) {
+    return state.cats.some(([r, c]) => state.board.grid[r][c] === color);
+  }
+  function openColors(state) {
+    const set = new Set();
+    for (let r = 0; r < state.board.rows; r++) for (let c = 0; c < state.board.cols; c++) {
+      if (state.status[r][c] === CANDIDATE) set.add(state.board.grid[r][c]);
+    }
+    return [...set].sort((a, b) => a - b);
+  }
+  function openRows(state) {
+    const out = [];
+    for (let r = 0; r < state.board.rows; r++) if (!hasCatInRow(state, r)) out.push(r);
+    return out;
+  }
+  function openCols(state) {
+    const out = [];
+    for (let c = 0; c < state.board.cols; c++) if (!hasCatInCol(state, c)) out.push(c);
+    return out;
+  }
+  function isSolved(state) { return state.cats.length === state.board.rows; }
+
+  /** A dead end a person can see: something that needs a cat has no cell left. */
+  function findContradiction(state) {
+    for (const r of openRows(state)) if (!candidatesOfRow(state, r).length) return `row ${r + 1} has no cell left`;
+    for (const c of openCols(state)) if (!candidatesOfCol(state, c).length) return `column ${c + 1} has no cell left`;
+    for (let color = 0; color < state.board.colors.length; color++) {
+      if (!hasCatOfColor(state, color) && !candidatesOfColor(state, color).length) {
+        return `the ${state.board.colorNames[color]} region has no cell left`;
+      }
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------- the hint rules
+  // Every rule returns one step, or null. They are tried in the order set out
+  // in RULES at the bottom of this section: the deductions that are easiest to
+  // spot by eye come first, so the hint list reads the way a person solves.
+
+  // 1. Placement: a colour, row or column with exactly one cell left.
+  function lastCellStanding(state, board) {
+    const names = board.colorNames;
+    for (const color of openColors(state)) {
+      if (hasCatOfColor(state, color)) continue;
+      const cand = candidatesOfColor(state, color);
+      if (cand.length === 1) {
+        return placement(state, cand[0], 'Only cell left in a colour',
+          `The ${names[color]} region has just one cell left, ${cellName(cand[0][0], cand[0][1])}. Every colour needs a cat, so the ${names[color]} cat goes there.`,
+          cand);
+      }
+    }
+    for (const r of openRows(state)) {
+      const cand = candidatesOfRow(state, r);
+      if (cand.length === 1) {
+        return placement(state, cand[0], 'Only cell left in a row',
+          `Row ${r + 1} has just one cell left, ${cellName(cand[0][0], cand[0][1])}. Every row needs a cat, so the cat for row ${r + 1} goes there.`,
+          cand, { rows: [r] });
+      }
+    }
+    for (const c of openCols(state)) {
+      const cand = candidatesOfCol(state, c);
+      if (cand.length === 1) {
+        return placement(state, cand[0], 'Only cell left in a column',
+          `Column ${c + 1} has just one cell left, ${cellName(cand[0][0], cand[0][1])}. Every column needs a cat, so the cat for column ${c + 1} goes there.`,
+          cand, { cols: [c] });
+      }
+    }
+    return null;
+  }
+
+  // 2. A colour that lives inside a single row (or column) owns that row.
+  function colorLockedToLine(state, board) {
+    const names = board.colorNames;
+    for (const color of openColors(state)) {
+      if (hasCatOfColor(state, color)) continue;
+      const cand = candidatesOfColor(state, color);
+      if (cand.length < 2) continue;
+
+      const rowsHit = [...new Set(cand.map(([r]) => r))];
+      if (rowsHit.length === 1) {
+        const r = rowsHit[0];
+        const strike = candidatesOfRow(state, r).filter(([, c]) => board.grid[r][c] !== color);
+        if (strike.length) {
+          return elimination(state, strike, 'Colour trapped in one row',
+            `Every cell the ${names[color]} region has left is in row ${r + 1}, so the ${names[color]} cat must be in row ${r + 1}. Row ${r + 1} only gets one cat, so no other colour can use that row.`,
+            cand, { rows: [r], colors: [color] });
+        }
+      }
+      const colsHit = [...new Set(cand.map(([, c]) => c))];
+      if (colsHit.length === 1) {
+        const c = colsHit[0];
+        const strike = candidatesOfCol(state, c).filter(([r]) => board.grid[r][c] !== color);
+        if (strike.length) {
+          return elimination(state, strike, 'Colour trapped in one column',
+            `Every cell the ${names[color]} region has left is in column ${c + 1}, so the ${names[color]} cat must be in column ${c + 1}. Column ${c + 1} only gets one cat, so no other colour can use that column.`,
+            cand, { cols: [c], colors: [color] });
+        }
+      }
+    }
+    return null;
+  }
+
+  // 3. A row (or column) whose remaining cells are all one colour owns that colour.
+  function lineLockedToColor(state, board) {
+    const names = board.colorNames;
+    for (const r of openRows(state)) {
+      const cand = candidatesOfRow(state, r);
+      if (cand.length < 2) continue;
+      const colorsHit = [...new Set(cand.map(([, c]) => board.grid[r][c]))];
+      if (colorsHit.length !== 1) continue;
+      const color = colorsHit[0];
+      const strike = candidatesOfColor(state, color).filter(([rr]) => rr !== r);
+      if (strike.length) {
+        return elimination(state, strike, 'Row locked to one colour',
+          `Row ${r + 1} only has ${names[color]} cells left, so row ${r + 1}'s cat is a ${names[color]} cat. That is the one ${names[color]} cat allowed, so the rest of the ${names[color]} region is out.`,
+          cand, { rows: [r], colors: [color] });
+      }
+    }
+    for (const c of openCols(state)) {
+      const cand = candidatesOfCol(state, c);
+      if (cand.length < 2) continue;
+      const colorsHit = [...new Set(cand.map(([r]) => board.grid[r][c]))];
+      if (colorsHit.length !== 1) continue;
+      const color = colorsHit[0];
+      const strike = candidatesOfColor(state, color).filter(([, cc]) => cc !== c);
+      if (strike.length) {
+        return elimination(state, strike, 'Column locked to one colour',
+          `Column ${c + 1} only has ${names[color]} cells left, so column ${c + 1}'s cat is a ${names[color]} cat. That is the one ${names[color]} cat allowed, so the rest of the ${names[color]} region is out.`,
+          cand, { cols: [c], colors: [color] });
+      }
+    }
+    return null;
+  }
+
+  // 4. Cats cannot touch. Take something that still needs a cat and has only a
+  //    few cells left (a colour, a row or a column); any cell that would block
+  //    all of them at once is dead. All such cells are struck in one step,
+  //    because they share the one reason.
+  //    `maxVictim` keeps the obvious cases (2-3 cells left) ahead of the
+  //    fiddlier ones in the rule order.
+  function wouldStarveSomething(maxVictim) {
+    return function (state, board) {
+      const names = board.colorNames;
+      const victims = [];
+      for (const color of openColors(state)) {
+        if (hasCatOfColor(state, color)) continue;
+        victims.push({ label: `the ${names[color]} region`, cells: candidatesOfColor(state, color), colors: [color] });
+      }
+      for (const r of openRows(state)) victims.push({ label: `row ${r + 1}`, cells: candidatesOfRow(state, r), rows: [r] });
+      for (const c of openCols(state)) victims.push({ label: `column ${c + 1}`, cells: candidatesOfCol(state, c), cols: [c] });
+
+      victims.sort((a, b) => a.cells.length - b.cells.length);
+      for (const victim of victims) {
+        const cells = victim.cells;
+        if (cells.length < 1 || cells.length > maxVictim) continue;
+        const inVictim = new Set(cells.map(([r, c]) => r * board.cols + c));
+        const strike = [];
+        for (let r = 0; r < board.rows; r++) {
+          for (let c = 0; c < board.cols; c++) {
+            if (state.status[r][c] !== CANDIDATE) continue;
+            if (inVictim.has(r * board.cols + c)) continue;
+            if (cells.every(([vr, vc]) => blocks(board, r, c, vr, vc))) strike.push([r, c]);
+          }
+        }
+        if (!strike.length) continue;
+        const only = cells.length === 1
+          ? `only has ${cellName(cells[0][0], cells[0][1])} left`
+          : `only has ${cells.length} cells left: ${listNames(cells.map(([r, c]) => cellName(r, c)))}`;
+        const names2 = listNames(strike.map(([r, c]) => cellName(r, c)));
+        const lead = strike.length === 1 ? `A cat on ${names2}` : `A cat on any of ${names2}`;
+        const them = cells.length === 1 ? 'that cell' : cells.length === 2 ? 'both of them' : 'every one of them';
+        return elimination(state, strike, 'Would leave nowhere to go',
+          `${cap(victim.label)} ${only}. ${lead} would block ${them} (same row, same column, same colour, or touching), leaving ${victim.label} nowhere to put its cat. So ${strike.length === 1 ? `${names2} is` : 'those cells are'} out.`,
+          cells, { rows: victim.rows, cols: victim.cols, colors: victim.colors });
+      }
+      return null;
+    };
+  }
+
+  /** Would a cat at (r,c) rule out the cell (vr,vc)? */
+  function blocks(board, r, c, vr, vc) {
+    if (r === vr && c === vc) return true;
+    if (r === vr || c === vc) return true;
+    if (board.grid[r][c] === board.grid[vr][vc]) return true;
+    return touches(r, c, vr, vc);
+  }
+
+  // 5. Counting rule. k colours whose cells only appear in k rows own those k
+  //    rows outright, so no other colour can use them. Same for columns.
+  function colorSetFillsLines(k) {
+    return function (state, board) {
+      const names = board.colorNames;
+      const colors = openColors(state).filter((color) => !hasCatOfColor(state, color));
+      if (colors.length <= k) return null;
+      for (const combo of combinations(colors, k)) {
+        const cand = [];
+        for (const color of combo) cand.push(...candidatesOfColor(state, color));
+
+        for (const axis of ['row', 'col']) {
+          const hit = [...new Set(cand.map(([r, c]) => (axis === 'row' ? r : c)))].sort((a, b) => a - b);
+          if (hit.length !== k) continue;
+          const strike = [];
+          for (const line of hit) {
+            const lineCells = axis === 'row' ? candidatesOfRow(state, line) : candidatesOfCol(state, line);
+            for (const [rr, cc] of lineCells) if (!combo.includes(board.grid[rr][cc])) strike.push([rr, cc]);
+          }
+          if (!strike.length) continue;
+          const word = axis === 'row' ? 'rows' : 'columns';
+          return elimination(state, strike, `${k} colours fill ${k} ${word}`,
+            `The ${listNames(combo.map((x) => names[x]))} regions have cells left only in ${word} ${listNames(hit.map((v) => String(v + 1)))}. Those ${k} colours each need their own ${axis === 'row' ? 'row' : 'column'}, so between them they take ${k === 2 ? 'both' : `all ${k}`}. No other colour can have its cat in those ${word}.`,
+            cand, axis === 'row' ? { rows: hit, colors: combo } : { cols: hit, colors: combo });
+        }
+      }
+      return null;
+    };
+  }
+
+  // 6. The mirror of rule 5. k rows that only contain k colours use those
+  //    colours up, so those colours are gone from the rest of the board.
+  function lineSetUsesUpColors(k) {
+    return function (state, board) {
+      const names = board.colorNames;
+      for (const axis of ['row', 'col']) {
+        const lines = axis === 'row' ? openRows(state) : openCols(state);
+        if (lines.length <= k) continue;
+        for (const combo of combinations(lines, k)) {
+          const cand = [];
+          for (const line of combo) cand.push(...(axis === 'row' ? candidatesOfRow(state, line) : candidatesOfCol(state, line)));
+          const colorsHit = [...new Set(cand.map(([r, c]) => board.grid[r][c]))];
+          if (colorsHit.length !== k) continue;
+          const strike = [];
+          for (const color of colorsHit) {
+            for (const [rr, cc] of candidatesOfColor(state, color)) {
+              if (!combo.includes(axis === 'row' ? rr : cc)) strike.push([rr, cc]);
+            }
+          }
+          if (!strike.length) continue;
+          const word = axis === 'row' ? 'rows' : 'columns';
+          return elimination(state, strike, `${k} ${word} use up ${k} colours`,
+            `${cap(word)} ${listNames(combo.map((v) => String(v + 1)))} have only ${listNames(colorsHit.map((x) => names[x]))} cells left between them. Those ${k} ${word} need ${k} different colours, so ${k === 2 ? 'both' : `all ${k}`} of those colours get used up right here. Those colours are out everywhere else on the board.`,
+            cand, axis === 'row' ? { rows: combo, colors: colorsHit } : { cols: combo, colors: colorsHit });
+        }
+      }
+      return null;
+    };
+  }
+
+  // 7. Last resort: a full search proves a cell cannot work. Harder to see by
+  //    hand, so it is only reached when nothing above applies.
+  function noWayToFinish(state, board) {
+    const { rows, cols } = board;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (state.status[r][c] !== CANDIDATE) continue;
+        const fixed = state.cats.concat([[r, c]]);
+        const banned = struckCells(state);
+        if (!solveAll(board, { limit: 1, fixed, banned }).length) {
+          return elimination(state, [[r, c]], 'No way to finish from here',
+            `Placing the cat on ${cellName(r, c)} leaves the rest of the board impossible to finish: no arrangement of the remaining colours works. This one takes several moves of look-ahead to see by hand. ${cellName(r, c)} is out.`,
+            [[r, c]], {});
+        }
+      }
+    }
+    return null;
+  }
+
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  const named = (name, fn) => { fn.ruleName = name; return fn; };
+
+  // Easiest-to-spot deductions first.
+  const RULES = [
+    named('last cell standing', lastCellStanding),
+    named('colour locked to a line', colorLockedToLine),
+    named('line locked to a colour', lineLockedToColor),
+    named('starve check (2)', wouldStarveSomething(2)),
+    named('colour set fills lines (2)', colorSetFillsLines(2)),
+    named('line set uses up colours (2)', lineSetUsesUpColors(2)),
+    named('starve check (4)', wouldStarveSomething(4)),
+    named('colour set fills lines (3)', colorSetFillsLines(3)),
+    named('line set uses up colours (3)', lineSetUsesUpColors(3)),
+    named('starve check (any)', wouldStarveSomething(Infinity)),
+    named('colour set fills lines (4)', colorSetFillsLines(4)),
+    named('line set uses up colours (4)', lineSetUsesUpColors(4)),
+    named('no way to finish', noWayToFinish),
+  ];
+
+  function struckCells(state) {
+    const out = [];
+    for (let r = 0; r < state.board.rows; r++) {
+      for (let c = 0; c < state.board.cols; c++) if (state.status[r][c] === STRUCK) out.push([r, c]);
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------ step making
+
+  function placement(state, cell, title, text, focus, lines) {
+    const [r, c] = cell;
+    return {
+      kind: 'place', title, text,
+      place: [r, c],
+      eliminate: knockedOutBy(state, r, c),
+      focus: (focus || []).slice(),
+      lines: lines || {},
+    };
+  }
+
+  function elimination(state, strike, title, text, focus, lines) {
+    const seen = new Set();
+    const eliminate = [];
+    for (const [r, c] of strike) {
+      const key = r + ',' + c;
+      if (seen.has(key) || state.status[r][c] !== CANDIDATE) continue;
+      seen.add(key);
+      eliminate.push([r, c]);
+    }
+    return { kind: 'strike', title, text, place: null, eliminate, focus: (focus || []).slice(), lines: lines || {} };
+  }
+
+  function cloneState(state) {
+    return {
+      board: state.board,
+      status: state.status.map((row) => row.slice()),
+      cats: state.cats.map((x) => x.slice()),
+      ignored: (state.ignored || []).map((x) => x.slice()),
+    };
+  }
+
+  function applyStep(state, step) {
+    if (step.place) applyCat(state, step.place[0], step.place[1]);
+    else for (const [r, c] of step.eliminate) if (state.status[r][c] === CANDIDATE) state.status[r][c] = STRUCK;
+    return state;
+  }
+
+  /** The next single deduction, or null when solved / stuck. */
+  function nextHint(state) {
+    if (isSolved(state)) return null;
+    for (const rule of RULES) {
+      const step = rule(state, state.board);
+      if (step && (step.place || step.eliminate.length)) return step;
+    }
+    return null;
+  }
+
+  /** Walk the whole puzzle, collecting every deduction in order. */
+  function fullHintPath(board, givens) {
+    const state = createState(board, givens);
+    const steps = [];
+    let guard = board.rows * board.cols * 8;
+    while (!isSolved(state) && guard-- > 0) {
+      const step = nextHint(state);
+      if (!step) break;
+      steps.push(step);
+      applyStep(state, step);
+    }
+    return { steps, state, solved: isSolved(state) };
+  }
+
+  const api = {
+    CANDIDATE, STRUCK, CAT, RULES,
+    validate, solveAll, createState, cloneState, applyStep, applyCat, nextHint, fullHintPath,
+    isSolved, candidatesOfColor, candidatesOfRow, candidatesOfCol, findContradiction, cellName,
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.MeowSolve = api;
+})(typeof self !== 'undefined' ? self : this);
+
+/* ===== ui.js ===== */
+/* ===========================================================================
+   ui.js  --  load a screenshot, let the user check the board, then hint.
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  const P = window.MeowParse, S = window.MeowSolve, C = window.MeowColors;
+  const $ = (sel) => document.querySelector(sel);
+
+  const CAT_SVG = `<svg class="cat" viewBox="0 0 32 32" aria-hidden="true">
+    <path d="M5 3 12 9 H20 L27 3 V13 A11 11 0 0 1 5 13 Z" fill="#241d1b"/>
+    <ellipse cx="16" cy="23.2" rx="7" ry="5.4" fill="#fffdfa"/>
+    <ellipse cx="11.6" cy="15" rx="2.7" ry="3.1" fill="#fffdfa"/>
+    <ellipse cx="20.4" cy="15" rx="2.7" ry="3.1" fill="#fffdfa"/>
+    <circle cx="11.6" cy="15.5" r="1.35" fill="#241d1b"/>
+    <circle cx="20.4" cy="15.5" r="1.35" fill="#241d1b"/>
+    <path d="M16 21.6 14.4 20.1h3.2z" fill="#e08ea2"/>
+  </svg>`;
+  // The cross is drawn in whichever of dark / light reads on the cell colour.
+  const xSvg = (hex) => `<svg class="struck" viewBox="0 0 24 24" aria-hidden="true" style="stroke:${C.inkFor(hex)}">
+    <path d="M5 5 19 19 M19 5 5 19" fill="none"/>
+  </svg>`;
+
+  // The board the two sample screenshots contain, so the page is usable and
+  // testable without an image at hand.
+  const EXAMPLE = {
+    colors: ['#abc5e4', '#f5da8f', '#c6748f', '#488a58', '#867ad4', '#9cd386', '#c7a636', '#9f7050', '#eb9fe1', '#5aa7bd'],
+    grid: [
+      '0011100000', '2033114440', '2033154400', '2033554006', '2077555066',
+      '2077775006', '2077888806', '2000008800', '2299908880', '2290000000',
+    ].map((row) => row.split('').map(Number)),
+    cats: [], marks: [],
+  };
+
+  /* ---------------------------------------------------------------- state */
+
+  const app = {
+    image: null,       // {width, height, data} of the loaded screenshot
+    board: null,       // {rows, cols, grid, colors, colorNames}
+    givens: { cats: [], marks: [] },
+    tool: 'paint',     // paint | cat | mark | erase
+    selected: 0,       // palette index
+    painting: false,
+    hints: null,       // {steps, solved}
+    cursor: 0,         // how many steps have been applied
+    solution: null,
+  };
+
+  function setBoard(parsed) {
+    app.board = {
+      rows: parsed.rows,
+      cols: parsed.cols,
+      grid: parsed.grid.map((r) => r.slice()),
+      colors: parsed.colors.slice(),
+      colorNames: C.nameAll(parsed.colors),
+    };
+    app.givens = {
+      cats: (parsed.cats || []).map((x) => x.slice()),
+      marks: (parsed.marks || []).map((x) => x.slice()),
+    };
+    app.selected = Math.min(app.selected, app.board.colors.length - 1);
+    app.hints = null;
+    $('#step-check').hidden = false;
+    $('#step-hints').hidden = true;
+    renderEditor();
+    $('#step-check').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function refreshNames() { app.board.colorNames = C.nameAll(app.board.colors); }
+
+  /* ---------------------------------------------------------- image input */
+
+  function imageDataFrom(bitmapSource, w, h) {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmapSource, 0, 0, w, h);
+    const id = ctx.getImageData(0, 0, w, h);
+    return { width: w, height: h, data: id.data };
+  }
+
+  /**
+   * Turn a picked file into raw pixels.
+   *
+   * createImageBitmap decodes the File itself, so no blob URL is involved.
+   * That matters when this page is opened straight off the disk rather than
+   * served: a file:// page has an opaque origin, and a canvas drawn from a URL
+   * can then refuse to hand its pixels back as cross origin. Browsers without
+   * createImageBitmap fall back to the object URL route.
+   */
+  function loadFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      showLoadNote('That does not look like an image file.', true);
+      return;
+    }
+    const accept = (source, w, h) => {
+      try {
+        app.image = imageDataFrom(source, w, h);
+      } catch (err) {
+        showLoadNote(`This browser would not let the page read that image's pixels (${err.name}). ` +
+          'Opening the file over a local web server instead of straight off the disk gets around it.', true);
+        return;
+      }
+      readImage();
+    };
+    const viaObjectUrl = () => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); accept(img, img.naturalWidth, img.naturalHeight); };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        showLoadNote('The browser could not decode that image.', true);
+      };
+      img.src = url;
+    };
+    if (typeof createImageBitmap === 'function') {
+      createImageBitmap(file).then((bmp) => accept(bmp, bmp.width, bmp.height), viaObjectUrl);
+    } else viaObjectUrl();
+  }
+
+  function readImage(opts) {
+    if (!app.image) return;
+    showLoadNote('Reading the board...');
+    // let the note paint before the (synchronous) scan
+    setTimeout(() => {
+      try {
+        const parsed = P.parseBoard(app.image, opts || currentParseOpts());
+        setBoard(parsed);
+        const d = parsed.debug;
+        showLoadNote(`Found a ${parsed.rows} by ${parsed.cols} board with ${parsed.colors.length} colours` +
+          `${parsed.cats.length ? `, ${parsed.cats.length} cat already placed` : ''}` +
+          `${parsed.marks.length ? `, ${parsed.marks.length} cell already crossed out` : ''}.` +
+          ` (cell size about ${Math.round(d.cellSize)}px)`, false, true);
+      } catch (err) {
+        showLoadNote(err.message + ' If the screenshot has extra clutter, crop it down to the board and try again.', true);
+      }
+    }, 30);
+  }
+
+  function currentParseOpts() {
+    const o = { colorTolerance: Number($('#tol') ? $('#tol').value : 40) };
+    if ($('#forceSize') && $('#forceSize').checked) {
+      o.forceRows = Number($('#rowsIn').value);
+      o.forceCols = Number($('#colsIn').value);
+    }
+    return o;
+  }
+
+  function showLoadNote(text, bad, good) {
+    const el = $('#loadNote');
+    el.hidden = false;
+    el.className = 'note' + (bad ? ' bad' : good ? ' good' : '');
+    el.textContent = text;
+  }
+
+  /* --------------------------------------------------------- board render */
+
+  /**
+   * One board renderer for both the editor and the hint view.
+   * @param {HTMLElement} host
+   * @param {object} view {status, cats, focus, pending, hotRows, hotCols, readonly, fresh}
+   */
+  function renderBoard(host, view) {
+    const b = app.board;
+    host.style.setProperty('--n', b.cols);
+    host.innerHTML = '';
+
+    const corner = div('corner');
+    const top = div('top-labels');
+    for (let c = 0; c < b.cols; c++) {
+      const l = div('lbl' + (view.hotCols && view.hotCols.includes(c) ? ' hot' : ''));
+      l.textContent = c + 1;
+      top.appendChild(l);
+    }
+    const side = div('side-labels');
+    for (let r = 0; r < b.rows; r++) {
+      const l = div('lbl' + (view.hotRows && view.hotRows.includes(r) ? ' hot' : ''));
+      l.textContent = r + 1;
+      side.appendChild(l);
+    }
+    const board = div('board' + (view.readonly ? ' readonly' : ''));
+    const key = (r, c) => r + ',' + c;
+    const focus = new Set((view.focus || []).map(([r, c]) => key(r, c)));
+    const pending = new Set((view.pending || []).map(([r, c]) => key(r, c)));
+    const fresh = new Set((view.fresh || []).map(([r, c]) => key(r, c)));
+
+    for (let r = 0; r < b.rows; r++) {
+      for (let c = 0; c < b.cols; c++) {
+        const cell = div('cell');
+        const hex = b.colors[b.grid[r][c]] || '#dddddd';
+        cell.style.background = hex;
+        cell.dataset.r = r; cell.dataset.c = c;
+        cell.title = `R${r + 1}C${c + 1} - ${b.colorNames[b.grid[r][c]]}`;
+        const st = view.status ? view.status[r][c] : S.CANDIDATE;
+        if (st === S.CAT) cell.innerHTML = CAT_SVG;
+        else if (st === S.STRUCK || pending.has(key(r, c))) cell.innerHTML = xSvg(hex);
+        if (focus.has(key(r, c))) cell.classList.add('focus');
+        if (pending.has(key(r, c))) cell.classList.add('pending');
+        if (fresh.has(key(r, c))) cell.classList.add('fresh');
+        board.appendChild(cell);
+      }
+    }
+    host.append(corner, top, side, board);
+    return board;
+  }
+
+  function div(cls) { const d = document.createElement('div'); d.className = cls; return d; }
+
+  /* --------------------------------------------------------------- editor */
+
+  function editorView() {
+    const b = app.board;
+    const status = [];
+    for (let r = 0; r < b.rows; r++) status.push(new Array(b.cols).fill(S.CANDIDATE));
+    for (const [r, c] of app.givens.marks) if (inside(r, c)) status[r][c] = S.STRUCK;
+    for (const [r, c] of app.givens.cats) if (inside(r, c)) status[r][c] = S.CAT;
+    return { status, readonly: false };
+  }
+
+  function inside(r, c) {
+    return r >= 0 && c >= 0 && r < app.board.rows && c < app.board.cols;
+  }
+
+  function renderEditor() {
+    const b = app.board;
+    const board = renderBoard($('#editBoard'), editorView());
+    app.editBoard = board;
+    board.addEventListener('pointerdown', (e) => {
+      const cell = e.target.closest('.cell');
+      if (!cell) return;
+      app.painting = true;
+      board.setPointerCapture(e.pointerId);
+      applyTool(Number(cell.dataset.r), Number(cell.dataset.c));
+    });
+    board.addEventListener('pointermove', (e) => {
+      if (!app.painting || app.tool !== 'paint') return;
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const cell = el && el.closest ? el.closest('.cell') : null;
+      if (cell) applyTool(Number(cell.dataset.r), Number(cell.dataset.c));
+    });
+    const stop = () => { app.painting = false; };
+    board.addEventListener('pointerup', stop);
+    board.addEventListener('pointercancel', stop);
+
+    renderModes();
+    $('#rowsIn').value = b.rows;
+    $('#colsIn').value = b.cols;
+    syncEditorSidebar();
+  }
+
+  /** Everything outside the grid itself: counts, warnings, text export. */
+  function syncEditorSidebar() {
+    renderPalette();
+    renderProblems();
+    $('#exportBox').textContent = boardAsText();
+  }
+
+  /** Repaint one cell in place, so dragging across the board stays smooth. */
+  function refreshCell(r, c) {
+    if (!app.editBoard) return;
+    const cell = app.editBoard.children[r * app.board.cols + c];
+    if (!cell) return;
+    const hex = app.board.colors[app.board.grid[r][c]] || '#dddddd';
+    cell.style.background = hex;
+    cell.title = `R${r + 1}C${c + 1} - ${app.board.colorNames[app.board.grid[r][c]]}`;
+    const isCat = app.givens.cats.some(([rr, cc]) => rr === r && cc === c);
+    const isMark = app.givens.marks.some(([rr, cc]) => rr === r && cc === c);
+    cell.innerHTML = isCat ? CAT_SVG : isMark ? xSvg(hex) : '';
+  }
+
+  function applyTool(r, c) {
+    if (!inside(r, c)) return;
+    const b = app.board;
+    const dropAt = (list) => {
+      const i = list.findIndex(([rr, cc]) => rr === r && cc === c);
+      if (i >= 0) { list.splice(i, 1); return true; }
+      return false;
+    };
+    if (app.tool === 'paint') {
+      if (b.grid[r][c] === app.selected) return;
+      b.grid[r][c] = app.selected;
+    } else if (app.tool === 'cat') {
+      dropAt(app.givens.marks);
+      if (!dropAt(app.givens.cats)) app.givens.cats.push([r, c]);
+    } else if (app.tool === 'mark') {
+      dropAt(app.givens.cats);
+      if (!dropAt(app.givens.marks)) app.givens.marks.push([r, c]);
+    } else if (app.tool === 'erase') {
+      dropAt(app.givens.cats);
+      dropAt(app.givens.marks);
+    }
+    app.hints = null;
+    $('#step-hints').hidden = true;
+    refreshCell(r, c);
+    if (app.syncQueued) return;
+    app.syncQueued = true;
+    requestAnimationFrame(() => { app.syncQueued = false; syncEditorSidebar(); });
+  }
+
+  function renderModes() {
+    const host = $('#modes');
+    host.innerHTML = '';
+    const modes = [
+      ['paint', 'Paint colour', 'Recolour cells the reader got wrong'],
+      ['cat', 'Place cat', 'Mark a cat that is already on the board'],
+      ['mark', 'Cross out', 'Mark a cell you already ruled out'],
+      ['erase', 'Clear cell', 'Remove a cat or a cross'],
+    ];
+    for (const [id, label, help] of modes) {
+      const btn = document.createElement('button');
+      btn.className = 'mode' + (app.tool === id ? ' on' : '');
+      btn.title = help;
+      btn.innerHTML = `<span class="glyph">${id === 'paint' ? '\u{1F3A8}' : id === 'cat' ? '\u{1F431}' : id === 'mark' ? '✕' : '⌫'}</span><span>${label}</span>`;
+      btn.onclick = () => { app.tool = id; renderModes(); };
+      host.appendChild(btn);
+    }
+  }
+
+  function renderPalette() {
+    const b = app.board;
+    const host = $('#palette');
+    host.innerHTML = '';
+    const counts = new Array(b.colors.length).fill(0);
+    for (const row of b.grid) for (const v of row) counts[v]++;
+
+    b.colors.forEach((hex, i) => {
+      const sw = document.createElement('button');
+      sw.className = 'swatch' + (app.selected === i ? ' on' : '');
+      sw.style.background = hex;
+      sw.title = `${b.colorNames[i]} - ${counts[i]} cell${counts[i] === 1 ? '' : 's'}`;
+      sw.innerHTML = `<span class="n" style="color:${C.inkFor(hex)}">${counts[i]}</span>`;
+      sw.onclick = () => { app.selected = i; app.tool = 'paint'; renderPalette(); renderModes(); renderSelected(); };
+      host.appendChild(sw);
+    });
+
+    const add = document.createElement('button');
+    add.className = 'swatch add';
+    add.textContent = '+';
+    add.title = 'Add another colour';
+    add.onclick = () => {
+      b.colors.push(freshHex(b.colors.length));
+      refreshNames();
+      app.selected = b.colors.length - 1;
+      app.tool = 'paint';
+      renderEditor();
+    };
+    host.appendChild(add);
+    renderSelected();
+
+    function renderSelected() {
+      const wrap = $('#selColor');
+      const i = app.selected;
+      const used = counts[i] || 0;
+      wrap.innerHTML = '';
+      const picker = document.createElement('input');
+      picker.type = 'color';
+      picker.value = b.colors[i] || '#cccccc';
+      picker.oninput = () => {
+        b.colors[i] = picker.value;
+        refreshNames();
+        for (let r = 0; r < b.rows; r++) {
+          for (let c = 0; c < b.cols; c++) if (b.grid[r][c] === i) refreshCell(r, c);
+        }
+        const swatchEl = $('#palette').children[i];
+        if (swatchEl) {
+          swatchEl.style.background = picker.value;
+          const n = swatchEl.querySelector('.n');
+          if (n) n.style.color = C.inkFor(picker.value);
+        }
+      };
+      picker.onchange = () => syncEditorSidebar();
+      const label = document.createElement('span');
+      label.innerHTML = `<strong>${b.colorNames[i]}</strong> selected, ${used} cell${used === 1 ? '' : 's'}`;
+      wrap.append(picker, label);
+      if (used === 0 && b.colors.length > 1) {
+        const del = document.createElement('button');
+        del.className = 'link';
+        del.textContent = 'remove';
+        del.onclick = () => {
+          b.colors.splice(i, 1);
+          for (let r = 0; r < b.rows; r++) {
+            for (let c = 0; c < b.cols; c++) if (b.grid[r][c] > i) b.grid[r][c]--;
+          }
+          refreshNames();
+          app.selected = Math.max(0, i - 1);
+          renderEditor();
+        };
+        wrap.appendChild(del);
+      }
+    }
+  }
+
+  function freshHex(n) {
+    const h = (n * 47) % 360;
+    return hslHex(h, 55, 62);
+  }
+  function hslHex(h, s, l) {
+    s /= 100; l /= 100;
+    const k = (x) => (x + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (x) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(x) - 3, Math.min(9 - k(x), 1)))));
+    return '#' + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Problems that would stop the solver, spelled out for the user. */
+  function renderProblems() {
+    const b = app.board;
+    const problems = S.validate(b).slice();
+    const seenCats = new Map();
+    for (const [r, c] of app.givens.cats) {
+      if (!inside(r, c)) continue;
+      for (const [k, v] of [['row', r], ['column', c], ['colour', b.grid[r][c]]]) {
+        const key = k + v;
+        if (seenCats.has(key)) problems.push(`Two placed cats share a ${k} (${S.cellName(r, c)} and ${S.cellName(...seenCats.get(key))}).`);
+        else seenCats.set(key, [r, c]);
+      }
+    }
+    const cats = app.givens.cats;
+    for (let i = 0; i < cats.length; i++) {
+      for (let j = i + 1; j < cats.length; j++) {
+        const [r, c] = cats[i], [r2, c2] = cats[j];
+        if (Math.abs(r - r2) <= 1 && Math.abs(c - c2) <= 1) {
+          problems.push(`Placed cats ${S.cellName(r, c)} and ${S.cellName(r2, c2)} are touching.`);
+        }
+      }
+    }
+    const unique = [...new Set(problems)];
+    const el = $('#problems');
+    const btn = $('#approve');
+    if (!unique.length) {
+      el.className = 'note good';
+      el.innerHTML = `Board looks well formed: ${b.rows} by ${b.cols}, ${b.colors.length} colours, one cat per row, column and colour.`;
+      btn.disabled = false;
+    } else {
+      el.className = 'note bad';
+      el.innerHTML = 'Fix these before solving:<ul>' + unique.map((p) => `<li>${p}</li>`).join('') + '</ul>';
+      btn.disabled = true;
+    }
+    el.hidden = false;
+  }
+
+  function boardAsText() {
+    const b = app.board;
+    const L = 'ABCDEFGHIJKLMNO';
+    const catKeys = new Set(app.givens.cats.map(([r, c]) => r + ',' + c));
+    const lines = [];
+    for (let r = 0; r < b.rows; r++) {
+      let line = '';
+      for (let c = 0; c < b.cols; c++) {
+        line += catKeys.has(r + ',' + c) ? L[b.grid[r][c]].toLowerCase() : L[b.grid[r][c]];
+      }
+      lines.push(line);
+    }
+    return lines.join('\n') + '\n\n' + b.colors.map((h, i) => `${L[i]} = ${h} (${b.colorNames[i]})`).join('\n') +
+      '\n\nLower case letter = a cat already placed there.';
+  }
+
+  /* ---------------------------------------------------------------- hints */
+
+  function solveAndHint() {
+    const b = app.board;
+    const sols = S.solveAll(b, { limit: 2 });
+    app.solution = sols[0] || null;
+
+    const notes = [];
+    if (!sols.length) {
+      notes.push(['bad', 'This board has no valid solution. The colour regions are probably not quite right yet, so go back and repaint the cells that look off.']);
+    } else if (sols.length > 1) {
+      notes.push(['bad', 'This board has more than one solution, which a real Meowdoku level never does. Some cells are likely painted with the wrong colour.']);
+    }
+    if (sols.length === 1) {
+      const inSol = new Set(sols[0].map(([r, c]) => r + ',' + c));
+      const wrong = app.givens.cats.filter(([r, c]) => !inSol.has(r + ',' + c));
+      if (wrong.length) {
+        notes.push(['bad', `The cat${wrong.length > 1 ? 's' : ''} you placed at ${wrong.map(([r, c]) => S.cellName(r, c)).join(', ')} cannot be right for this board. Either the colours need a fix, or that cat was picked up from the screenshot by mistake.`]);
+      }
+      const badMarks = app.givens.marks.filter(([r, c]) => inSol.has(r + ',' + c));
+      if (badMarks.length) {
+        notes.push(['bad', `You crossed out ${badMarks.map(([r, c]) => S.cellName(r, c)).join(', ')}, but the solution needs a cat there. The hints below start from your crosses, so clear those first or the reasoning will run into a wall.`]);
+      }
+    }
+
+    app.hints = S.fullHintPath(b, app.givens);
+    app.cursor = 0;
+    if (sols.length === 1 && !app.hints.solved) {
+      notes.push(['', 'The plain deduction rules run out before the end on this board, so the last hints fall back to look-ahead reasoning.']);
+    }
+
+    $('#step-hints').hidden = false;
+    const noteHost = $('#solveNotes');
+    noteHost.innerHTML = '';
+    for (const [kind, text] of notes) {
+      const n = div('note' + (kind ? ' ' + kind : ''));
+      n.textContent = text;
+      noteHost.appendChild(n);
+    }
+    renderHints();
+    $('#step-hints').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Replay the first `cursor` steps to get the board state to draw. */
+  function stateAt(cursor) {
+    const state = S.createState(app.board, app.givens);
+    for (let i = 0; i < cursor; i++) S.applyStep(state, app.hints.steps[i]);
+    return state;
+  }
+
+  function renderHints() {
+    const steps = app.hints.steps;
+    const state = stateAt(app.cursor);
+    const step = steps[app.cursor] || null;
+    const prev = app.cursor > 0 ? steps[app.cursor - 1] : null;
+
+    renderBoard($('#hintBoard'), {
+      status: state.status,
+      readonly: true,
+      focus: step ? step.focus : [],
+      pending: step && !step.place ? step.eliminate : [],
+      fresh: prev && prev.place ? [prev.place] : [],
+      hotRows: step ? (step.lines.rows || []) : [],
+      hotCols: step ? (step.lines.cols || []) : [],
+    });
+
+    const now = $('#hintNow');
+    if (step) {
+      const isPlace = !!step.place;
+      now.innerHTML = `<span class="tag${isPlace ? ' place' : ''}">${isPlace ? 'Place a cat' : 'Rule cells out'}</span>
+        <p>${escapeHtml(step.text)}</p>
+        <p class="step-no">Step ${app.cursor + 1} of ${steps.length}. ${isPlace
+          ? 'Highlighted cells are the reason. Press Apply to place it.'
+          : `Cells outlined in red get crossed out (${step.eliminate.length}). Press Apply to do it.`}</p>`;
+    } else if (S.isSolved(state)) {
+      now.innerHTML = `<span class="tag place">Solved</span><p>All ${app.board.rows} cats are placed. Every colour, row and column has exactly one, and none of them touch.</p>`;
+    } else {
+      now.innerHTML = `<span class="tag">Out of hints</span><p>No further deduction was found from here. If the board came from a screenshot, a mis-read colour is the usual cause.</p>`;
+    }
+
+    const list = $('#hintList');
+    list.innerHTML = '';
+    steps.forEach((s, i) => {
+      const li = document.createElement('li');
+      li.className = i < app.cursor ? 'done' : i === app.cursor ? 'current' : '';
+      const effect = s.place ? `cat on ${S.cellName(s.place[0], s.place[1])}` : `crosses out ${s.eliminate.length} cell${s.eliminate.length === 1 ? '' : 's'}`;
+      li.innerHTML = `<span class="idx">${i + 1}</span><span><span class="what">${escapeHtml(s.title)}</span> <span class="eff">- ${effect}</span></span>`;
+      li.onclick = () => { app.cursor = i; renderHints(); };
+      list.appendChild(li);
+    });
+    if (app.cursor < steps.length) {
+      const cur = list.children[app.cursor];
+      if (cur) cur.scrollIntoView({ block: 'nearest' });
+    }
+
+    $('#prevHint').disabled = app.cursor === 0;
+    $('#nextHint').disabled = app.cursor >= steps.length;
+    $('#allHints').disabled = app.cursor >= steps.length;
+    $('#hintCount').textContent = `${app.cursor} of ${steps.length} applied`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
+  function revealSolution() {
+    if (!app.solution) return;
+    const state = S.createState(app.board, { cats: [], marks: [] });
+    for (const [r, c] of app.solution) if (state.status[r][c] !== S.CAT) S.applyCat(state, r, c);
+    renderBoard($('#hintBoard'), { status: state.status, readonly: true });
+    $('#hintNow').innerHTML = `<span class="tag place">Full solution</span><p>${app.solution
+      .map(([r, c]) => `${S.cellName(r, c)} <span style="color:${C.inkFor(app.board.colors[app.board.grid[r][c]])};background:${app.board.colors[app.board.grid[r][c]]};padding:1px 6px;border-radius:6px">${escapeHtml(app.board.colorNames[app.board.grid[r][c]])}</span>`)
+      .join(', ')}</p>`;
+  }
+
+  /* ------------------------------------------------------------------ wire */
+
+  function init() {
+    const drop = $('#drop'), file = $('#file');
+    $('#browse').onclick = () => file.click();
+    file.onchange = () => file.files[0] && loadFile(file.files[0]);
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+      e.preventDefault(); drop.classList.add('over');
+    }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer.files[0];
+      if (f) loadFile(f);
+    });
+    document.addEventListener('paste', (e) => {
+      for (const item of e.clipboardData.items) {
+        if (item.type.startsWith('image/')) { loadFile(item.getAsFile()); return; }
+      }
+    });
+    $('#example').onclick = () => {
+      app.image = null;
+      setBoard({ rows: 10, cols: 10, grid: EXAMPLE.grid, colors: EXAMPLE.colors, cats: [], marks: [] });
+      showLoadNote('Loaded the level 119 board from the sample screenshots.', false, true);
+    };
+
+    $('#reread').onclick = () => readImage();
+    $('#tol').oninput = () => { $('#tolVal').textContent = $('#tol').value; };
+    $('#clearGivens').onclick = () => {
+      app.givens = { cats: [], marks: [] };
+      app.hints = null;
+      $('#step-hints').hidden = true;
+      renderEditor();
+    };
+    $('#approve').onclick = solveAndHint;
+
+    $('#nextHint').onclick = () => { app.cursor = Math.min(app.cursor + 1, app.hints.steps.length); renderHints(); };
+    $('#prevHint').onclick = () => { app.cursor = Math.max(app.cursor - 1, 0); renderHints(); };
+    $('#allHints').onclick = () => { app.cursor = app.hints.steps.length; renderHints(); };
+    $('#resetHints').onclick = () => { app.cursor = 0; renderHints(); };
+    $('#reveal').onclick = revealSolution;
+
+    document.addEventListener('keydown', (e) => {
+      if ($('#step-hints').hidden || !app.hints) return;
+      if (e.target.matches('input, textarea')) return;
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); $('#nextHint').click(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); $('#prevHint').click(); }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>
